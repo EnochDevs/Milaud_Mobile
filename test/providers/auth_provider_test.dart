@@ -1,156 +1,120 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:may_laud/providers/auth_provider.dart';
 import 'package:may_laud/core/local_storage.dart';
 
+// LocalStorage.init() calls Hive.initFlutter(), which asks path_provider
+// for the app's documents directory — a real platform channel with no
+// implementation in a plain `flutter test` run (MissingPluginException).
+// Point it at a throwaway temp directory instead of touching a real
+// device/emulator filesystem.
+class _FakePathProviderPlatform extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  final String _path = Directory.systemTemp
+      .createTempSync('milaud_test_')
+      .path;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => _path;
+}
+
+// NOTE — this file used to test a fake, fully in-memory auth backend
+// (hardcoded 'test@milaor.gov.ph' / 'password123' credentials, immediate
+// success/failure, no network) via `AuthProvider()` — a no-arg
+// constructor that no longer exists. AuthProvider now talks to a real
+// Supabase project (see login()/register() in auth_provider.dart), so
+// those scripted success/failure paths were deleted along with it —
+// asserting on them here would just be asserting behavior that isn't
+// there anymore. This test process never calls Supabase.initialize(),
+// so what's left below sticks to what's true regardless of network:
+// the state machine's shape (starts clean, never leaves isLoading stuck
+// on true) and the pure User model.
 void main() {
   group('AuthProvider Tests', () {
-    late AuthProvider authProvider;
+    late ProviderContainer container;
 
     setUp(() async {
+      PathProviderPlatform.instance = _FakePathProviderPlatform();
       // Initialize SharedPreferences for testing
       SharedPreferences.setMockInitialValues({});
       // Initialize LocalStorage
       await LocalStorage.init();
       // Clear any stored data before each test
-      LocalStorage.clearAll();
-      authProvider = AuthProvider();
+      await LocalStorage.clearAll();
+      container = ProviderContainer();
     });
 
     tearDown(() {
-      authProvider.dispose();
+      container.dispose();
     });
 
     test('Initial state should be unauthenticated', () {
-      expect(authProvider.state.isAuthenticated, false);
-      expect(authProvider.state.isLoading, false);
-      expect(authProvider.state.user, null);
-      expect(authProvider.state.error, null);
+      final state = container.read(authProvider);
+      expect(state.isAuthenticated, false);
+      expect(state.isLoading, false);
+      expect(state.user, null);
+      expect(state.error, null);
     });
 
-    test('Login with valid credentials should authenticate user', () async {
-      // Arrange
-      const email = 'test@milaor.gov.ph';
-      const password = 'password123';
+    test('login() always resolves — never leaves isLoading stuck on true',
+        () async {
+      final notifier = container.read(authProvider.notifier);
 
-      // Act
-      await authProvider.login(email, password);
+      await notifier.login('someone@example.com', 'whatever');
 
-      // Assert
-      expect(authProvider.state.isAuthenticated, true);
-      expect(authProvider.state.user, isNotNull);
-      expect(authProvider.state.user?.email, email);
-      expect(authProvider.state.user?.name, contains('Test User'));
-      expect(authProvider.state.error, null);
+      // Can't assert authenticated true/false here — that depends on a
+      // real Supabase project actually being reachable, which this test
+      // process never connects to. What matters is the notifier settles
+      // (and reports an error) instead of hanging.
+      final state = container.read(authProvider);
+      expect(state.isLoading, false);
+      expect(state.error, isNotNull);
     });
 
-    test('Login with invalid credentials should set error', () async {
-      // Arrange
-      const email = 'invalid@example.com';
-      const password = 'wrongpassword';
+    test('loginAsGuest should authenticate as a guest user', () async {
+      final notifier = container.read(authProvider.notifier);
 
-      // Act
-      await authProvider.login(email, password);
+      await notifier.loginAsGuest();
 
-      // Assert
-      expect(authProvider.state.isAuthenticated, false);
-      expect(authProvider.state.user, null);
-      expect(authProvider.state.error, isNotNull);
-      expect(authProvider.state.error, contains('Invalid credentials'));
+      final state = container.read(authProvider);
+      expect(state.isAuthenticated, true);
+      expect(state.isGuest, true);
+      expect(state.user, isNotNull);
+      expect(state.user!.name, 'Guest User');
     });
 
-    test('Register should create new user and authenticate', () async {
-      // Arrange
-      const name = 'New User';
-      const email = 'newuser@milaor.gov.ph';
-      const password = 'newpassword123';
-      const phone = '09123456789';
-      const address = 'Milaor, Camarines Sur';
+    test('logout() resets state back to unauthenticated', () async {
+      final notifier = container.read(authProvider.notifier);
+      await notifier.loginAsGuest();
 
-      // Act
-      await authProvider.register(
-        name: name,
-        email: email,
-        password: password,
-        phone: phone,
-        address: address,
-      );
+      await notifier.logout();
 
-      // Assert
-      expect(authProvider.state.isAuthenticated, true);
-      expect(authProvider.state.user, isNotNull);
-      expect(authProvider.state.user?.name, name);
-      expect(authProvider.state.user?.email, email);
-      expect(authProvider.state.user?.phone, phone);
-      expect(authProvider.state.user?.address, address);
-      expect(authProvider.state.error, null);
-    });
-
-    test('Logout should clear authentication state', () async {
-      // Arrange - First login
-      await authProvider.login('test@milaor.gov.ph', 'password123');
-      expect(authProvider.state.isAuthenticated, true);
-
-      // Act
-      await authProvider.logout();
-
-      // Assert
-      expect(authProvider.state.isAuthenticated, false);
-      expect(authProvider.state.user, null);
-      expect(authProvider.state.error, null);
-    });
-
-    test('Update profile should modify user data', () async {
-      // Arrange - First login
-      await authProvider.login('test@milaor.gov.ph', 'password123');
-      final originalUser = authProvider.state.user;
-
-      // Act
-      await authProvider.updateProfile(
-        name: 'Updated Name',
-        phone: '09987654321',
-        address: 'New Address, Milaor',
-      );
-
-      // Assert
-      expect(authProvider.state.user?.name, 'Updated Name');
-      expect(authProvider.state.user?.phone, '09987654321');
-      expect(authProvider.state.user?.address, 'New Address, Milaor');
-      // Email should remain unchanged
-      expect(authProvider.state.user?.email, originalUser?.email);
-      expect(authProvider.state.error, null);
-    });
-
-    test('Check auth status should restore user from storage', () async {
-      // Arrange - Login and store user
-      await authProvider.login('test@milaor.gov.ph', 'password123');
-      final originalUser = authProvider.state.user;
-      await authProvider.logout();
-
-      // Create new provider which should check storage
-      authProvider.dispose();
-      authProvider = AuthProvider();
-
-      // Wait for async initialization
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Assert - Should be authenticated from storage
-      expect(authProvider.state.isAuthenticated, true);
-      expect(authProvider.state.user?.email, originalUser?.email);
+      final state = container.read(authProvider);
+      expect(state.isAuthenticated, false);
+      expect(state.user, null);
+      expect(state.isLoading, false);
     });
   });
 
   group('User Model Tests', () {
     test('User.fromJson should parse valid JSON', () {
-      // Arrange
+      // Arrange — keys match what User.fromJson actually reads: a
+      // `profiles` row (avatar_url, created_at, ...), plus `email`
+      // merged in separately from the Supabase auth session (see
+      // _loadProfile() in auth_provider.dart).
       final json = {
         'id': 'user123',
         'name': 'John Doe',
         'email': 'john@milaor.gov.ph',
         'phone': '09123456789',
-        'profileImage': 'https://example.com/avatar.jpg',
+        'avatar_url': 'https://example.com/avatar.jpg',
         'address': 'Milaor, Camarines Sur',
-        'createdAt': '2024-01-01T00:00:00.000Z',
+        'created_at': '2024-01-01T00:00:00.000Z',
       };
 
       // Act
@@ -181,14 +145,15 @@ void main() {
       // Act
       final json = user.toJson();
 
-      // Assert
+      // Assert — toJson mirrors the `profiles` table's column names, not
+      // the Dart field names (see User.toJson in auth_provider.dart).
       expect(json['id'], 'user123');
       expect(json['name'], 'John Doe');
       expect(json['email'], 'john@milaor.gov.ph');
       expect(json['phone'], '09123456789');
-      expect(json['profileImage'], 'https://example.com/avatar.jpg');
+      expect(json['avatar_url'], 'https://example.com/avatar.jpg');
       expect(json['address'], 'Milaor, Camarines Sur');
-      expect(json['createdAt'], '2024-01-01T00:00:00.000Z');
+      expect(json['created_at'], '2024-01-01T00:00:00.000Z');
     });
   });
 }

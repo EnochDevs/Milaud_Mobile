@@ -66,17 +66,28 @@ class _MyAppState extends ConsumerState<MyApp> {
   void initState() {
     super.initState();
     // Wire push callbacks once we have a WidgetRef/navigator to act on.
-    PushNotificationService.instance.onMessageReceived = () {
-      // Supabase stays the source of truth for the in-app list —
-      // just re-pull it whenever a push comes in or is opened.
-      ref.read(notificationsProvider.notifier).fetchNotifications();
-    };
-    PushNotificationService.instance.onNotificationTap = (data) {
-      // Simple example: route everything to the notifications screen and
-      // let it deep-link from there. Extend this switch as you add more
-      // notification `type`s server-side (e.g. 'announcement', 'document_request').
-      navigatorKey.currentState?.pushNamed('/main');
-    };
+    // Guarded the same way as the Firebase.initializeApp() call in main():
+    // PushNotificationService.instance internally touches
+    // FirebaseMessaging.instance, which throws if Firebase never actually
+    // initialized (e.g. running on web, where this app's Firebase project
+    // isn't configured yet — see DefaultFirebaseOptions.currentPlatform).
+    // Without this guard, that throw happens during the very first widget
+    // build and takes the whole app down instead of just disabling push.
+    try {
+      PushNotificationService.instance.onMessageReceived = () {
+        // Supabase stays the source of truth for the in-app list —
+        // just re-pull it whenever a push comes in or is opened.
+        ref.read(notificationsProvider.notifier).fetchNotifications();
+      };
+      PushNotificationService.instance.onNotificationTap = (data) {
+        // Simple example: route everything to the notifications screen and
+        // let it deep-link from there. Extend this switch as you add more
+        // notification `type`s server-side (e.g. 'announcement', 'document_request').
+        navigatorKey.currentState?.pushNamed('/main');
+      };
+    } catch (e) {
+      debugPrint('[PushNotificationService] Callback wiring skipped: $e');
+    }
   }
 
   @override

@@ -123,14 +123,40 @@ class AuthProvider extends StateNotifier<AuthState> {
 
   Future<void> _loadProfile(String uid, String email) async {
     try {
-      final data = await _client
-          .from('profiles')
-          .select()
-          .eq('id', uid)
-          .single();
+      // .limit(1) instead of .single() so a missing row comes back as an
+      // empty list instead of throwing — we want to handle that case
+      // ourselves below, not fall into the catch-all.
+      final rows =
+          await _client.from('profiles').select().eq('id', uid).limit(1);
+      var data = rows.isEmpty ? null : rows.first;
+
+      if (data == null) {
+        // FIX — register() intentionally leaves `profiles` empty until
+        // completeRegistration() runs after OTP verification (RLS blocks
+        // writing it any earlier — see register()'s comment). If that OTP
+        // step never finished (user closed the app, never got the code,
+        // the "Confirm signup" email template doesn't send a token, etc.),
+        // signing in later used to hit this exact case, throw out of
+        // .single(), and get swallowed by the catch below with zero
+        // feedback — the login button just stopped spinning and nothing
+        // happened, as if the tap did nothing at all. We already have a
+        // valid authenticated session at this point (signInWithPassword
+        // / session restore just succeeded), so RLS now allows us to
+        // create our own row — self-heal instead of leaving the resident
+        // stuck.
+        final metadata = _client.auth.currentUser?.userMetadata ?? {};
+        await _client.from('profiles').upsert({
+          'id':    uid,
+          'name':  metadata['name'] ?? '',
+          'email': email,
+          'phone': metadata['phone'],
+        });
+        data = await _client.from('profiles').select().eq('id', uid).single();
+      }
 
       final user = User.fromJson({...data, 'email': email});
-      state = state.copyWith(user: user, isAuthenticated: true, isLoading: false);
+      state = state.copyWith(
+          user: user, isAuthenticated: true, isLoading: false, error: null);
 
       // Fresh sign-in or session restore — make sure notifications /
       // announcements reflect THIS uid, not whatever was left over from
@@ -147,9 +173,37 @@ class AuthProvider extends StateNotifier<AuthState> {
       // so pushes (announcements, doc-request status changes, etc.) can
       // be targeted at it. Covers both a fresh login and session restore
       // on cold start.
-      unawaited(PushNotificationService.instance.syncTokenWithSupabase());
-    } catch (_) {
-      state = state.copyWith(isAuthenticated: false, isLoading: false);
+      //
+      // FIX — `PushNotificationService.instance` eagerly reads
+      // `FirebaseMessaging.instance` the moment it's first constructed,
+      // which throws *synchronously* wherever Firebase was never
+      // initialized (e.g. this app's Firebase project isn't configured
+      // for web yet — see the same guard in main.dart's initState).
+      // unawaited() only discards the returned Future; it does nothing
+      // for a throw that happens before syncTokenWithSupabase() ever
+      // returns one, on the `.instance` access itself. Unguarded, that
+      // exception landed in *this* try block — after login had already
+      // succeeded above — and got caught below, silently flipping
+      // isAuthenticated back to false. Every login was failing for this
+      // reason on web, with nothing wrong in the credentials at all.
+      try {
+        unawaited(PushNotificationService.instance.syncTokenWithSupabase());
+      } catch (e) {
+        debugPrint('[AuthProvider] Push token sync skipped: $e');
+      }
+    } catch (e) {
+      debugPrint('[AuthProvider] _loadProfile failed: $e');
+      state = state.copyWith(
+        isAuthenticated: false,
+        isLoading: false,
+        // FIX — previously left null here, so a failure at this stage
+        // (this self-heal upsert included) showed the resident nothing:
+        // the login screen just sat there as if the button hadn't been
+        // tapped. _checkAuthStatus() also calls this on cold start before
+        // any UI is listening for it, so keep this message generic rather
+        // than assuming a login is in progress.
+        error: 'Could not load your profile. Please try again.',
+      );
     }
   }
 
@@ -243,11 +297,22 @@ class AuthProvider extends StateNotifier<AuthState> {
     final uid = SupabaseService.userId;
     if (uid == null) return;
     try {
-      await _client.from('profiles').update({
+      // FIX — this used to be .update(...), which only touches a row that
+      // already exists. register()'s earlier upsert attempt is *expected*
+      // to fail at that point (no confirmed session yet, so RLS blocks it
+      // — see the comment there), and nothing else ever creates the row.
+      // So on every single registration, this .update() was silently
+      // updating zero rows — no profile ever got created, and the
+      // resident could never log in afterward (_loadProfile() found
+      // nothing to load). .upsert() creates the row here instead, now
+      // that OTP verification means there's a real authenticated session.
+      await _client.from('profiles').upsert({
+        'id':      uid,
         'name':    name,
         'phone':   phone,
         'address': address,
-      }).eq('id', uid);
+        'email':   _client.auth.currentUser?.email,
+      });
       // First time this brand-new profile row is guaranteed to exist —
       // safe point to attach this device's push token to it.
       unawaited(PushNotificationService.instance.syncTokenWithSupabase());
@@ -276,8 +341,29 @@ class AuthProvider extends StateNotifier<AuthState> {
       // Detach this device's push token from the profile *before*
       // signing out — clearTokenOnLogout needs the still-valid session
       // to know whose profile row to update.
-      await PushNotificationService.instance.clearTokenOnLogout();
-      await _client.auth.signOut();
+      //
+      // FIX — same gap as the syncTokenWithSupabase() call above:
+      // `PushNotificationService.instance` throws synchronously on
+      // first access wherever Firebase isn't initialized (e.g. web).
+      // Unguarded, that took down the entire logout — signOut() and
+      // the state reset below never ran, so tapping "Log out" just
+      // left the app stuck on a loading spinner forever.
+      try {
+        await PushNotificationService.instance.clearTokenOnLogout();
+      } catch (e) {
+        debugPrint('[AuthProvider] Push token clear skipped: $e');
+      }
+      // FIX — signOut() was unguarded too: if it throws (offline,
+      // Supabase never finished initializing, etc.) the exception
+      // propagated out of logout() entirely, so LocalStorage.clearAll()
+      // and the final state reset below never ran. From the resident's
+      // point of view, "Log out" should always clear their session on
+      // this device even if the network round-trip to Supabase fails.
+      try {
+        await _client.auth.signOut();
+      } catch (e) {
+        debugPrint('[AuthProvider] Supabase signOut skipped: $e');
+      }
     }
     await LocalStorage.clearAll();
     // Drop the outgoing user's cached notifications/announcements state so

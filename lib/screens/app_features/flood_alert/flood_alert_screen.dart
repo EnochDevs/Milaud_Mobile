@@ -6,6 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
+import '../../../services/ai_triage_service.dart';
 
 // ─── BRAND PALETTE — delegates to AppColors (single source of truth) ───
 class FloodColors {
@@ -15,13 +16,15 @@ class FloodColors {
   static const Color warmHearth     = AppColors.warmHearth;
   static const Color cardWhite      = AppColors.cardWhite;
 
-  // Flood severity
+  // Flood severity — matches api.py's flood_risk levels: Low/Moderate/High/Severe
   static const Color safe = Color(0xFF22C55E);
   static const Color alert = Color(0xFFF59E0B);
   static const Color danger = Color(0xFFEF4444);
+  static const Color severe = Color(0xFF991B1B);
   static const Color safeBg = Color(0xFFF0FDF4);
   static const Color alertBg = Color(0xFFFFFBEB);
   static const Color dangerBg = Color(0xFFFEF2F2);
+  static const Color severeBg = Color(0xFFFEE2E2);
 
   static const LinearGradient headerGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -55,7 +58,19 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
   Color get _mutedText  => _colors.textMuted;
 
   final RefreshController _refreshController = RefreshController();
-  late Map<String, dynamic> _floodData;
+  final AiTriageService _ai = AiTriageService();
+
+  // Live data from your weather API (see api.py's GET /weather/rain-risk).
+  // Null while loading, or if the backend couldn't be reached / hasn't
+  // got OPENWEATHER_API_KEY configured — _buildHeroStatusCard() and
+  // _buildForecastSection() below show an honest "unavailable" state
+  // rather than pretending there's a value.
+  RainRiskResult? _rainRisk;
+  bool _isLoadingRainRisk = true;
+
+  // NOTE — _alerts and _safetyTips below are still placeholder/mock
+  // data. Nothing in api.py provides per-station river-monitoring
+  // readings, so there's no real backend to wire these to yet.
   late List<Map<String, dynamic>> _alerts;
   late List<Map<String, dynamic>> _safetyTips;
   int _expandedTipIndex = -1;
@@ -63,35 +78,21 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
   @override
   void initState() {
     super.initState();
-    _initData();
+    _initMockData();
+    _fetchRainRisk();
   }
 
-  void _initData() {
-    _floodData = {
-      'riverLevel': 2.4,
-      'dangerLevel': 3.0,
-      'status': 'Normal',
-      'trend': 'stable',
-      'lastUpdate': DateTime.now().subtract(const Duration(minutes: 30)),
-      'forecast': [
-        {'time': 'Now', 'level': 2.4, 'status': 'Normal', 'icon': Icons.waves},
-        {'time': '3h', 'level': 2.5, 'status': 'Normal', 'icon': Icons.waves},
-        {'time': '6h', 'level': 2.7, 'status': 'Normal', 'icon': Icons.water},
-        {
-          'time': '12h',
-          'level': 2.9,
-          'status': 'Alert',
-          'icon': Icons.warning_amber
-        },
-        {
-          'time': '24h',
-          'level': 3.2,
-          'status': 'Warning',
-          'icon': Icons.dangerous
-        },
-      ],
-    };
+  Future<void> _fetchRainRisk() async {
+    if (mounted) setState(() => _isLoadingRainRisk = true);
+    final result = await _ai.getRainRisk();
+    if (!mounted) return;
+    setState(() {
+      _rainRisk = result;
+      _isLoadingRainRisk = false;
+    });
+  }
 
+  void _initMockData() {
     _alerts = [
       {
         'title': 'Bicol River Monitoring',
@@ -163,8 +164,7 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
   }
 
   void _onRefresh() async {
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() => _initData());
+    await _fetchRainRisk();
     _refreshController.refreshCompleted();
   }
 
@@ -278,37 +278,55 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
     );
   }
 
-  // ─── HERO STATUS CARD ──────────────────────────────────
-  Widget _buildHeroStatusCard() {
-    final statusText = _floodData['status'] as String;
-    final riverLevel = (_floodData['riverLevel'] as num).toDouble();
-    final dangerLevel = (_floodData['dangerLevel'] as num).toDouble();
-    final percentage = (riverLevel / dangerLevel).clamp(0.0, 1.0);
+  // Maps api.py's flood_risk levels onto this screen's color language.
+  Color _riskColor(String risk) => switch (risk.toLowerCase()) {
+        'low' => FloodColors.safe,
+        'moderate' => FloodColors.alert,
+        'high' => FloodColors.danger,
+        'severe' => FloodColors.severe,
+        _ => FloodColors.heritagePurple,
+      };
 
-    Color statusColor;
-    Color glowColor;
-    IconData statusIcon;
-    switch (statusText.toLowerCase()) {
-      case 'normal':
-        statusColor = FloodColors.safe;
-        glowColor = FloodColors.safe.withValues(alpha: 0.3);
-        statusIcon = Icons.check_circle_rounded;
-        break;
-      case 'alert':
-        statusColor = FloodColors.alert;
-        glowColor = FloodColors.alert.withValues(alpha: 0.3);
-        statusIcon = Icons.warning_amber_rounded;
-        break;
-      case 'warning':
-        statusColor = FloodColors.danger;
-        glowColor = FloodColors.danger.withValues(alpha: 0.3);
-        statusIcon = Icons.dangerous_rounded;
-        break;
-      default:
-        statusColor = FloodColors.heritagePurple;
-        glowColor = FloodColors.heritagePurple.withValues(alpha: 0.3);
-        statusIcon = Icons.info_rounded;
+  IconData _riskIcon(String risk) => switch (risk.toLowerCase()) {
+        'low' => Icons.check_circle_rounded,
+        'moderate' => Icons.warning_amber_rounded,
+        'high' => Icons.dangerous_rounded,
+        'severe' => Icons.report_rounded,
+        _ => Icons.info_rounded,
+      };
+
+  // ─── HERO STATUS CARD ──────────────────────────────────
+  // FIX — used to show a fabricated "river level in meters vs a danger
+  // threshold" gauge with no real data behind it at all. Now driven by
+  // your weather API's live rain-risk snapshot (see _fetchRainRisk()) —
+  // shows a loading/unavailable state honestly instead of a fake number
+  // when that hasn't succeeded yet.
+  Widget _buildHeroStatusCard() {
+    if (_isLoadingRainRisk) {
+      return _buildHeroPlaceholder(
+        icon: Icons.cloud_sync_rounded,
+        message: 'Checking live rain forecast…',
+        showSpinner: true,
+      );
     }
+    final rainRisk = _rainRisk;
+    if (rainRisk == null) {
+      return _buildHeroPlaceholder(
+        icon: Icons.cloud_off_rounded,
+        message: 'Live rain forecast unavailable right now.\n'
+            'Make sure the triage API is running and OPENWEATHER_API_KEY is configured.',
+        showSpinner: false,
+      );
+    }
+
+    final statusText = rainRisk.floodRisk;
+    // 50mm/12h is api.py's own "Severe" threshold (get_rain_forecast()) —
+    // reused here so the gauge fills at the same point the backend
+    // itself calls the situation severe.
+    final percentage = (rainRisk.expectedRainMmNext12h / 50).clamp(0.0, 1.0);
+    final statusColor = _riskColor(statusText);
+    final glowColor = statusColor.withValues(alpha: 0.3);
+    final statusIcon = _riskIcon(statusText);
 
     return Container(
       width: double.infinity,
@@ -387,7 +405,7 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '${riverLevel}m',
+                      '${rainRisk.expectedRainMmNext12h.toStringAsFixed(0)}mm',
                       style: GoogleFonts.poppins(
                         fontSize: 38.sp,
                         fontWeight: FontWeight.w800,
@@ -397,7 +415,7 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
                     ),
                     SizedBox(height: 2.h),
                     Text(
-                      'of ${dangerLevel}m',
+                      'expected, next 12h',
                       style: GoogleFonts.inter(
                         fontSize: 14.sp,
                         fontWeight: FontWeight.w500,
@@ -410,35 +428,42 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
             ),
           ),
           SizedBox(height: 24.h),
-          // ─── Status Text ───
+          // ─── Status Text — the API's own recommended_action, not a
+          // canned message, so it actually reflects this situation ───
           Container(
+            width: double.infinity,
             padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
             decoration: BoxDecoration(
               color: statusColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(16.r),
             ),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 8.w,
-                  height: 8.w,
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                          color: glowColor, blurRadius: 8, spreadRadius: 2),
-                    ],
+                Padding(
+                  padding: EdgeInsets.only(top: 5.h),
+                  child: Container(
+                    width: 8.w,
+                    height: 8.w,
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                            color: glowColor, blurRadius: 8, spreadRadius: 2),
+                      ],
+                    ),
                   ),
                 ),
                 SizedBox(width: 10.w),
-                Text(
-                  _getStatusMessage(statusText),
-                  style: GoogleFonts.inter(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
-                    color: _titleText,
+                Expanded(
+                  child: Text(
+                    rainRisk.recommendedAction,
+                    style: GoogleFonts.inter(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                      color: _titleText,
+                    ),
                   ),
                 ),
               ],
@@ -449,44 +474,89 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
     ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.05, end: 0);
   }
 
-  String _getStatusMessage(String status) {
-    switch (status.toLowerCase()) {
-      case 'normal':
-        return 'Water levels are within safe limits';
-      case 'alert':
-        return 'Monitor updates — water level is rising';
-      case 'warning':
-        return 'Danger level reached — prepare to evacuate';
-      default:
-        return 'Monitoring in progress';
-    }
+  Widget _buildHeroPlaceholder({
+    required IconData icon,
+    required String message,
+    required bool showSpinner,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(vertical: 48.h, horizontal: 24.w),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(28.r),
+        boxShadow: [
+          BoxShadow(
+            color: FloodColors.heritagePurple.withValues(alpha: 0.08),
+            blurRadius: 30,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          if (showSpinner)
+            SizedBox(
+              width: 32.w,
+              height: 32.w,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                    FloodColors.heritagePurple),
+              ),
+            )
+          else
+            Icon(icon, size: 40.sp, color: _mutedText),
+          SizedBox(height: 16.h),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(fontSize: 13.sp, color: _mutedText, height: 1.5),
+          ),
+        ],
+      ),
+    );
   }
 
   // ─── QUICK STATS ROW ───────────────────────────────────
+  // FIX — 'Trend' used to be a fabricated 'stable' string with nothing
+  // behind it; api.py doesn't provide a trend either, so this now shows
+  // the one thing it DOES provide that the hero card doesn't already
+  // cover — the evacuation advisory flag. 'Rainfall' and 'Last Update'
+  // are now the real values from _rainRisk instead of hardcoded ones.
   Widget _buildQuickStatsRow() {
+    final rainRisk = _rainRisk;
     return Row(
       children: [
         Expanded(
             child: _buildStatCard(
-          icon: Icons.trending_up_rounded,
-          label: 'Trend',
-          value: (_floodData['trend'] as String).toUpperCase(),
-          color: FloodColors.riverFlow,
+          icon: rainRisk?.evacuationAdvisory == true
+              ? Icons.directions_run_rounded
+              : Icons.home_rounded,
+          label: 'Advisory',
+          value: rainRisk == null
+              ? '—'
+              : (rainRisk.evacuationAdvisory ? 'EVACUATE' : 'STAY PUT'),
+          color: rainRisk?.evacuationAdvisory == true
+              ? FloodColors.danger
+              : FloodColors.riverFlow,
         )),
         SizedBox(width: 12.w),
         Expanded(
             child: _buildStatCard(
           icon: Icons.access_time_rounded,
-          label: 'Last Update',
-          value: _formatTime(_floodData['lastUpdate']),
+          label: 'Checked',
+          value: rainRisk == null ? '—' : _formatTime(rainRisk.checkedAt),
           color: FloodColors.heritagePurple,
         )),
         SizedBox(width: 12.w),
         Expanded(
             child: _buildStatCard(
           icon: Icons.water_drop_rounded,
-          label: 'Rainfall',
-          value: '12mm',
+          label: 'Rainfall (12h)',
+          value: rainRisk == null
+              ? '—'
+              : '${rainRisk.expectedRainMmNext12h.toStringAsFixed(0)}mm',
           color: const Color(0xFF0EA5E9),
         )),
       ],
@@ -546,8 +616,18 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
   }
 
   // ─── FORECAST SECTION ──────────────────────────────────
+  // FIX — used to render a fabricated hourly river-level bar chart
+  // (Now/3h/6h/12h/24h) with invented numbers behind every point.
+  // api.py's /weather/rain-risk gives one current snapshot, not an
+  // hourly timeline, so this is now a "Live Rain Risk Assessment" panel
+  // showing the real fields that snapshot actually has — an evacuation
+  // badge when relevant, and the backend's own disclaimer note — instead
+  // of pretending to have forecast granularity that doesn't exist.
   Widget _buildForecastSection() {
-    final forecasts = _floodData['forecast'] as List<dynamic>;
+    final rainRisk = _rainRisk;
+    if (rainRisk == null) return const SizedBox.shrink();
+
+    final riskColor = _riskColor(rainRisk.floodRisk);
 
     return Container(
       width: double.infinity,
@@ -567,16 +647,19 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'River Level Forecast',
-                style: GoogleFonts.poppins(
-                  fontSize: 18.sp,
-                  fontWeight: FontWeight.w700,
-                  color: _titleText,
+              Expanded(
+                child: Text(
+                  'Live Rain Risk Assessment',
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w700,
+                    color: _titleText,
+                  ),
                 ),
               ),
+              SizedBox(width: 8.w),
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                 decoration: BoxDecoration(
@@ -584,7 +667,7 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
                   borderRadius: BorderRadius.circular(100.r),
                 ),
                 child: Text(
-                  '24h outlook',
+                  'ML weather API',
                   style: GoogleFonts.inter(
                     fontSize: 12.sp,
                     fontWeight: FontWeight.w600,
@@ -594,129 +677,72 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
               ),
             ],
           ),
-          SizedBox(height: 24.h),
-          // ─── Bar Chart ───
-          SizedBox(
-            height: 180.h,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: forecasts.map<Widget>((point) {
-                final level = (point['level'] as num).toDouble();
-                final status = point['status'] as String;
-                final time = point['time'] as String;
-                final icon = point['icon'] as IconData;
-
-                Color barColor;
-                switch (status) {
-                  case 'Alert':
-                    barColor = FloodColors.alert;
-                    break;
-                  case 'Warning':
-                    barColor = FloodColors.danger;
-                    break;
-                  default:
-                    barColor = FloodColors.safe;
-                }
-
-                final heightFactor = (level / 4.0).clamp(0.15, 1.0);
-                final barHeight = 100.h * heightFactor;
-
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Level label
-                    Text(
-                      '${level}m',
+          SizedBox(height: 18.h),
+          if (rainRisk.evacuationAdvisory) ...[
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+              decoration: BoxDecoration(
+                color: FloodColors.danger.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14.r),
+                border: Border.all(
+                    color: FloodColors.danger.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.directions_run_rounded,
+                      color: FloodColors.danger, size: 20.sp),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Text(
+                      'Evacuation advisory in effect',
                       style: GoogleFonts.poppins(
-                        fontSize: 12.sp,
+                        fontSize: 13.sp,
                         fontWeight: FontWeight.w700,
-                        color: barColor,
+                        color: FloodColors.danger,
                       ),
                     ),
-                    SizedBox(height: 6.h),
-                    // Bar
-                    Container(
-                      width: 32.w,
-                      height: barHeight,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [barColor, barColor.withValues(alpha: 0.6)],
-                        ),
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(10.r),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: barColor.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    // Time icon
-                    Icon(icon, color: barColor, size: 18.sp),
-                    SizedBox(height: 4.h),
-                    // Time label
-                    Text(
-                      time,
-                      style: GoogleFonts.inter(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w600,
-                        color: _bodyText,
-                      ),
-                    ),
-                  ],
-                );
-              }).toList(),
+                  ),
+                ],
+              ),
             ),
-          ),
-          SizedBox(height: 20.h),
-          // ─── Legend ───
+            SizedBox(height: 16.h),
+          ],
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildLegendChip('Normal', FloodColors.safe),
-              SizedBox(width: 16.w),
-              _buildLegendChip('Alert', FloodColors.alert),
-              SizedBox(width: 16.w),
-              _buildLegendChip('Warning', FloodColors.danger),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                decoration: BoxDecoration(
+                  color: riskColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(100.r),
+                ),
+                child: Text(
+                  '${rainRisk.floodRisk.toUpperCase()} RISK',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w700,
+                    color: riskColor,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Text(
+                  '${rainRisk.expectedRainMmNext12h.toStringAsFixed(0)}mm expected in the next 12h',
+                  style: GoogleFonts.inter(fontSize: 12.sp, color: _mutedText),
+                ),
+              ),
             ],
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            rainRisk.note,
+            style: GoogleFonts.inter(
+                fontSize: 11.sp, color: _mutedText, height: 1.5),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildLegendChip(String label, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 10.w,
-          height: 10.w,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 4),
-            ],
-          ),
-        ),
-        SizedBox(width: 6.w),
-        Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 12.sp,
-            fontWeight: FontWeight.w500,
-            color: _bodyText,
-          ),
-        ),
-      ],
     );
   }
 

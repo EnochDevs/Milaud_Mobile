@@ -273,7 +273,19 @@ class NotificationsProvider extends StateNotifier<List<AppNotification>> {
   String? _subscribedUid;
 
   void _subscribeToRealtimeChanges() {
-    final uid = SupabaseService.userId;
+    // FIX — SupabaseService.userId (like SupabaseService.client) throws
+    // synchronously if called before Supabase.initialize() has completed.
+    // This method runs unguarded from the constructor (unlike
+    // AnnouncementsProvider's equivalent, which wraps its own
+    // _client access in try/catch below) — reading notificationsProvider
+    // early enough to race SupabaseService.init() used to crash provider
+    // construction entirely instead of just skipping realtime for now.
+    String? uid;
+    try {
+      uid = SupabaseService.userId;
+    } catch (_) {
+      return;
+    }
     if (uid == null) return;
     if (_channel != null && _subscribedUid == uid) return;
     // A different user signed in on this device than the one the
@@ -330,19 +342,28 @@ class NotificationsProvider extends StateNotifier<List<AppNotification>> {
   }
 
   Future<void> fetchNotifications() async {
-    final uid = SupabaseService.userId;
-    if (uid == null) return;
-
-    // The provider is constructed once, at app start, when there may be
-    // no signed-in user yet (guest mode, session still restoring) — so
-    // the realtime channel from the constructor never attached. Every
-    // later call to fetchNotifications() (pull-to-refresh, opening the
-    // screen, a push arriving) is a safe point to (re)attach it for
-    // whoever is currently signed in, without needing auth_provider to
-    // know about this provider at all.
-    _subscribeToRealtimeChanges();
-
+    // FIX — SupabaseService.userId was read outside any try/catch here.
+    // It throws synchronously if Supabase.initialize() hasn't completed
+    // yet, and since fetchNotifications() is async, that throw doesn't
+    // reach the constructor's `try { fetchNotifications(); } catch (_) {}`
+    // (which only catches a *synchronous* throw, not this function's
+    // returned Future rejecting later) — it surfaced instead as an
+    // unhandled async error. AnnouncementsProvider.fetchAnnouncements()
+    // already wraps this same access inside its try block; mirror that
+    // here instead of checking it up front.
     try {
+      final uid = SupabaseService.userId;
+      if (uid == null) return;
+
+      // The provider is constructed once, at app start, when there may
+      // be no signed-in user yet (guest mode, session still restoring)
+      // — so the realtime channel from the constructor never attached.
+      // Every later call to fetchNotifications() (pull-to-refresh,
+      // opening the screen, a push arriving) is a safe point to
+      // (re)attach it for whoever is currently signed in, without
+      // needing auth_provider to know about this provider at all.
+      _subscribeToRealtimeChanges();
+
       final rows = await _client
           .from('notifications')
           .select()

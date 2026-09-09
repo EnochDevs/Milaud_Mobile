@@ -1,8 +1,20 @@
-import 'dart:io';
+import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:may_laud/providers/content_providers.dart';
 import 'package:may_laud/services/supabase_service.dart';
+import 'package:may_laud/services/ai_triage_service.dart';
+
+/// A picked photo's raw bytes plus a filename, used by
+/// CitizenReportService.submitReport() and AiTriageService.verifyImage().
+/// Bytes rather than a `dart:io File` — `File` doesn't exist on Flutter
+/// web, and this keeps the whole report-photo pipeline working on every
+/// platform the app targets, not just mobile.
+class ReportPhoto {
+  final Uint8List bytes;
+  final String filename;
+  const ReportPhoto({required this.bytes, required this.filename});
+}
 
 class AnnouncementService {
   final Ref ref;
@@ -240,13 +252,33 @@ class CitizenReportService {
   // indirection entirely (the screen's own category list doesn't even
   // match fetchReportCategories()' set, so the id lookup was never going
   // to be reliable).
+  // `priority` is the FINAL severity value the report gets saved with —
+  // normally this is whatever citizen_report_screen.dart's priority picker
+  // was left on, which itself gets pre-filled from the AI's suggestion but
+  // stays resident-editable (see AiTriageService docs). Passing null here
+  // is fine too: submitReport() still runs its own AI classification below
+  // and uses that if the caller doesn't already have one.
   Future<Map<String, dynamic>> submitReport({
     required String category,
     required String subcategory,
     required String description,
     required String location,
-    List<File>? photoFiles,
+    List<ReportPhoto>? photoFiles,
     String? contactInfo,
+    String? priority,
+    // Pass this through when the caller already ran classifySeverity()
+    // itself (e.g. citizen_report_screen.dart's "Auto-Classify Severity"
+    // button) — skips re-running the exact same AI call a second time
+    // here, while still recording what the AI suggested in
+    // ai_suggested_severity / ai_severity_confidence below (which stay
+    // meaningful even when `priority` came from the resident overriding
+    // that suggestion).
+    SeverityResult? severityResult,
+    // 'Emergency' | 'Minor Concern' — forwarded to the AI backend when it
+    // has to run classifySeverity() itself below (severityResult wasn't
+    // already provided). Matches api.py's report_type field, which
+    // forces 'Low' severity outright for 'Minor Concern'.
+    String? reportType,
   }) async {
     final uid = SupabaseService.userId;
     if (uid == null) throw Exception('Not logged in');
@@ -255,15 +287,40 @@ class CitizenReportService {
     if (photoFiles != null) {
       for (int i = 0; i < photoFiles.length; i++) {
         final path = '$uid/${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+        // FIX — .upload() takes a `dart:io File`, which doesn't exist on
+        // Flutter web at all ("Unsupported operation: _Namespace" the
+        // moment a photo was attached). .uploadBinary() takes raw bytes
+        // instead, which works on every platform.
         await SupabaseService.client.storage
             .from('report-photos')
-            .upload(path, photoFiles[i]);
+            .uploadBinary(path, photoFiles[i].bytes);
         final url = SupabaseService.client.storage
             .from('report-photos')
             .getPublicUrl(path);
         photoUrls.add(url);
       }
     }
+
+    // AI TRIAGE — severity classification + image verification. Both are
+    // best-effort: a null result (backend down, network issue, etc.) just
+    // means we fall back to whatever priority the resident picked manually
+    // and skip the image-based fields. This must never block a submission.
+    final ai = AiTriageService();
+    final severity = severityResult ??
+        await ai.classifySeverity(description,
+            reportType: reportType, category: category);
+
+    ImageVerificationResult? imageResult;
+    if (photoFiles != null && photoFiles.isNotEmpty) {
+      imageResult = await ai.verifyImage(
+        photoFiles.first.bytes,
+        filename: photoFiles.first.filename,
+      );
+    }
+
+    final finalPriority = priority ?? severity?.toPriorityLevel();
+    final requiresReview = imageResult != null &&
+        (!imageResult.isValidPhoto || imageResult.requiresManualReview);
 
     final row = await SupabaseService.client
         .from('citizen_reports')
@@ -275,9 +332,30 @@ class CitizenReportService {
           'location':    location,
           'photo_urls':  photoUrls,
           'contact':     contactInfo,
+          'severity':                  finalPriority,
+          'ai_suggested_severity':     severity?.severity,
+          'ai_severity_confidence':    severity?.confidence,
+          'ai_detected_image_category': imageResult?.detectedCategory,
+          'ai_image_valid':            imageResult?.isValidPhoto,
+          'requires_manual_review':    requiresReview,
         })
         .select()
         .single();
+
+    // FIX — nothing previously called api.py's /notify-high, so a High
+    // severity report never actually reached officials by email despite
+    // that endpoint existing. Fire-and-forget: the report is already
+    // saved above regardless of whether this succeeds, so a slow/failed
+    // email dispatch must never delay or fail the resident's submission.
+    if (finalPriority == 'High') {
+      unawaited(ai.notifyHighSeverityIncident(
+        category: category,
+        severity: finalPriority!,
+        description: description,
+        location: location,
+        imageUrl: photoUrls.isNotEmpty ? photoUrls.first : null,
+      ));
+    }
 
     return {
       'reportId':            row['id'],

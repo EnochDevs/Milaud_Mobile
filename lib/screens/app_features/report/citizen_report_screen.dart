@@ -1,6 +1,8 @@
 // lib/screens/app_features/report/citizen_report_screen.dart
 // ignore_for_file: deprecated_member_use
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -9,12 +11,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'dart:io';
 
 import '../../home/home.dart';
 import 'package:may_laud/theme/app_theme.dart';
 import '../../home/nav_bar_button.dart';
 import '../../../services/app_services.dart';
+import '../../../services/ai_triage_service.dart';
 import '../../../utils/guest_guard.dart'; // ✅ Import guest guard
 
 // ─── REPORT COLOR PALETTE ─────────────────────────────
@@ -90,21 +92,106 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
 
-  String _selectedCategory = 'Infrastructure';
-  String _selectedPriority = 'Medium';
-  final List<File> _attachedPhotos = [];
+  // 'Emergency' | 'Minor Concern' — matches api.py's `report_type` field
+  // exactly (see ReportRequest/classify_report() in api.py). 'Minor
+  // Concern' makes the backend force severity to 'Low' without even
+  // running the model.
+  String _reportType = 'Emergency';
+  // FIX — used to default to the first category in whichever list
+  // ('Fire' under Emergency), which made that chip look already picked
+  // the moment the screen opened even though the resident hadn't tapped
+  // anything. Null means "nothing chosen yet" — a category only becomes
+  // selected via an explicit tap or the AI detecting one from a photo
+  // (see _detectCategoryFromPhoto()); _submitReport() below refuses to
+  // submit until one is actually set.
+  String? _selectedCategory;
+  // FIX — used to default to 'Medium', which made that chip look
+  // already picked the moment the screen opened, before the resident (or
+  // the AI) had actually chosen anything — the same issue as
+  // _selectedCategory above. Null means "nothing chosen yet"; a level
+  // only becomes selected via an explicit tap or an AI classification
+  // result. submitReport() already treats a null priority as "let the
+  // backend derive one," so nothing downstream needed to change for
+  // this to be safe to leave unset.
+  String? _selectedPriority;
+  // Tracks whether the resident actually tapped a priority chip
+  // themselves — without this flag, an AI suggestion landing here would
+  // look identical to a deliberate choice, and a later AI re-check could
+  // silently overwrite what they picked.
+  bool _priorityManuallySet = false;
+  // Same idea for category: attaching a photo of a fire auto-selects the
+  // "Fire" chip below, but only while the resident hasn't already picked
+  // one themselves — this flag is how _detectCategoryFromPhoto() knows
+  // not to clobber a deliberate choice.
+  bool _categoryManuallySet = false;
+  final List<ReportPhoto> _attachedPhotos = [];
   final ImagePicker _picker = ImagePicker();
+  final AiTriageService _ai = AiTriageService();
   bool _isSubmitting = false;
   bool _isFetchingLocation = false;
 
+  // Whichever category/priority the AI most recently suggested (photo
+  // detection / description classification), so the UI can show a small
+  // "AI suggested" badge on that chip instead of leaving it looking like
+  // an arbitrary default the resident is expected to double-check.
+  String? _aiSuggestedCategory;
+  String? _aiSuggestedPriority;
+  // The AI's raw classification result, kept alongside _aiSuggestedPriority
+  // so submitReport() can record what the AI suggested (for admin
+  // review) without re-running the exact same classification a second
+  // time at submission — see the submitReport() call in _submitReport().
+  SeverityResult? _lastSeverityResult;
+  bool _isCheckingPhotoCategory = false;
+  bool _isCheckingSeverity = false;
+  Timer? _severityDebounce;
+
   final CitizenReportService _reportService = CitizenReportService();
 
-  final List<Map<String, dynamic>> _categories = [
+  // Maps what AiTriageService.verifyImage() can detect onto this screen's
+  // own category chips. Earthquake/Landslide have no matching chip yet —
+  // intentionally left unmapped for now, so a detection for either of
+  // those is simply ignored rather than guessing at the wrong category.
+  static const Map<String, String> _aiCategoryMap = {
+    'Fire': 'Fire',
+    'Flooding': 'Flooding',
+  };
+
+  // FIX — Fire/Flooding used to live in one combined list alongside the
+  // routine categories below. Now that there's a separate Emergency /
+  // Minor Concern toggle (matching api.py's own report_type concept —
+  // 'Minor Concern' forces Low severity without even running the model),
+  // keeping them there too would let a resident tag a house fire as a
+  // "minor concern" and have it auto-downgraded. Split by report type
+  // instead; _categories below picks the right list for whichever is
+  // currently selected.
+  final List<Map<String, dynamic>> _emergencyCategories = [
     {
-      'name': 'Infrastructure',
-      'icon': Icons.construction_rounded,
+      'name': 'Fire',
+      'icon': Icons.local_fire_department_rounded,
+      'color': const Color(0xFFEA580C)
+    },
+    {
+      'name': 'Flooding',
+      'icon': Icons.water_damage_rounded,
+      'color': const Color(0xFF0891B2)
+    },
+    {
+      'name': 'Medical Emergency',
+      'icon': Icons.medical_services_rounded,
+      'color': const Color(0xFFEF4444)
+    },
+    {
+      'name': 'Infrastructure Damage',
+      'icon': Icons.warning_amber_rounded,
       'color': const Color(0xFF6366F1)
     },
+  ];
+
+  // FIX — 'Infrastructure' used to sit here too, alongside 'Infrastructure
+  // Damage' under Emergency — two categories covering the same concept
+  // in different modes. Removed here; damaged infrastructure now only
+  // ever goes under Emergency.
+  final List<Map<String, dynamic>> _minorConcernCategories = [
     {
       'name': 'Sanitation',
       'icon': Icons.cleaning_services_rounded,
@@ -137,6 +224,31 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     },
   ];
 
+  List<Map<String, dynamic>> get _categories =>
+      _reportType == 'Emergency' ? _emergencyCategories : _minorConcernCategories;
+
+  void _setReportType(String type) {
+    if (_reportType == type) return;
+    setState(() {
+      _reportType = type;
+      // The previously-selected category (if any) may not exist in the
+      // new list at all (e.g. switching away from Emergency loses
+      // "Fire") — clear it rather than leaving a stale, invisible
+      // selection. Matches the "nothing pre-selected" rule below.
+      _selectedCategory = null;
+      _categoryManuallySet = false;
+      _aiSuggestedCategory = null;
+      // Same idea for severity — AI assistance is Emergency-only, so a
+      // result from before switching modes shouldn't linger into Minor
+      // Concern (or carry stale confidence numbers back into a fresh
+      // Emergency report later).
+      _selectedPriority = null;
+      _priorityManuallySet = false;
+      _aiSuggestedPriority = null;
+      _lastSeverityResult = null;
+    });
+  }
+
   final List<Map<String, dynamic>> _priorities = [
     {
       'level': 'Low',
@@ -156,36 +268,154 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       'icon': Icons.flag_rounded,
       'color': ReportColors.priorityHigh
     },
-    {
-      'level': 'Emergency',
-      'label': 'Immediate action',
-      'icon': Icons.warning_rounded,
-      'color': ReportColors.priorityEmergency
-    },
+    // NOTE: "Emergency" was removed here to match the project's documented
+    // 3-level severity scale (High/Medium/Low) — see ai_triage_service.dart's
+    // toPriorityLevel(), which now folds the AI's "Critical" into "High".
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Live severity suggestion as the resident describes the issue — no
+    // click required (see _onDescriptionChanged()). "Auto-Classify
+    // Severity" further down still lets them re-trigger it manually,
+    // e.g. after editing the description further.
+    _descriptionController.addListener(_onDescriptionChanged);
+  }
 
   @override
   void dispose() {
     _titleController.dispose();
+    _descriptionController.removeListener(_onDescriptionChanged);
     _descriptionController.dispose();
     _locationController.dispose();
+    _severityDebounce?.cancel();
     super.dispose();
   }
 
+  // FIX — these used to wrap the picked XFile in a `dart:io File`, which
+  // doesn't exist on Flutter web at all ("Unsupported operation:
+  // _Namespace" the moment a resident tried attaching a photo there).
+  // Reading the bytes up front instead works on every platform, and is
+  // what both the Supabase upload and the AI image-verification call
+  // need anyway (see ReportPhoto in app_services.dart).
   Future<void> _pickFromGallery() async {
     final XFile? image =
         await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (image != null) setState(() => _attachedPhotos.add(File(image.path)));
+    if (image == null) return;
+    final bytes = await image.readAsBytes();
+    if (!mounted) return;
+    final photo = ReportPhoto(bytes: bytes, filename: image.name);
+    setState(() => _attachedPhotos.add(photo));
+    _detectCategoryFromPhoto(photo);
   }
 
   Future<void> _pickFromCamera() async {
     final XFile? photo =
         await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
-    if (photo != null) setState(() => _attachedPhotos.add(File(photo.path)));
+    if (photo == null) return;
+    final bytes = await photo.readAsBytes();
+    if (!mounted) return;
+    final picked = ReportPhoto(bytes: bytes, filename: photo.name);
+    setState(() => _attachedPhotos.add(picked));
+    _detectCategoryFromPhoto(picked);
   }
 
   void _removePhoto(int index) =>
       setState(() => _attachedPhotos.removeAt(index));
+
+  // ─── AI: AUTO-DETECT CATEGORY FROM PHOTO ─────────────
+  // Runs the moment a photo is attached (not only at final submission,
+  // like submitReport() already does for the DB's own record-keeping
+  // fields) so the resident sees their category chip react immediately —
+  // e.g. attaching a photo of a burning building auto-selects "Fire".
+  // Never overrides a category the resident already picked themselves.
+  Future<void> _detectCategoryFromPhoto(ReportPhoto photo) async {
+    if (_categoryManuallySet) return;
+    if (!mounted) return;
+    setState(() => _isCheckingPhotoCategory = true);
+    try {
+      final result =
+          await _ai.verifyImage(photo.bytes, filename: photo.filename);
+      if (!mounted || _categoryManuallySet) return;
+      final matched = _aiCategoryMap[result?.detectedCategory];
+      if (matched == null) return;
+      setState(() {
+        // A detected Fire/Flooding only exists as a category chip under
+        // Emergency mode (see the split above) — switch modes too, or
+        // the selection below would point at a category the visible
+        // list doesn't contain.
+        _reportType = 'Emergency';
+        _selectedCategory = matched;
+        _aiSuggestedCategory = matched;
+      });
+    } finally {
+      if (mounted) setState(() => _isCheckingPhotoCategory = false);
+    }
+  }
+
+  // ─── AI: AUTO-SUGGEST SEVERITY FROM DESCRIPTION ──────
+  // Live suggestion as the resident types — debounced so it doesn't fire
+  // an AI request on every keystroke (see _onDescriptionChanged()). The
+  // "Auto-Classify Severity" button below calls this too, for an
+  // on-demand re-check (e.g. after editing the description further, or
+  // to refresh after having manually overridden the last suggestion).
+  void _onDescriptionChanged() {
+    _severityDebounce?.cancel();
+    _severityDebounce = Timer(const Duration(milliseconds: 700),
+        () => _classifySeverityFromDescription());
+  }
+
+  Future<void> _classifySeverityFromDescription({bool manual = false}) async {
+    // AI-assisted severity is Emergency-only (see the button/panel above
+    // being hidden entirely in Minor Concern) — Minor Concern residents
+    // pick a level manually, full stop. Guarding here too matters
+    // because _onDescriptionChanged() fires regardless of report type;
+    // without this, typing in Minor Concern mode would still silently
+    // classify in the background and auto-select a priority chip nobody
+    // asked for.
+    if (_reportType != 'Emergency') return;
+    // A manual button tap always runs, even overriding a prior manual
+    // pick — typing-triggered calls respect it and stay quiet instead.
+    if (_priorityManuallySet && !manual) return;
+
+    final text = _descriptionController.text.trim();
+    if (text.isEmpty) {
+      if (manual) _showSnack('Describe the situation first.');
+      return;
+    }
+    // Too short to mean much yet — skip rather than classifying a
+    // fragment like "the". Only applies to the typing-triggered path; a
+    // manual tap always runs regardless of length.
+    if (!manual && text.length < 15) return;
+
+    if (!mounted) return;
+    setState(() => _isCheckingSeverity = true);
+    try {
+      final result = await _ai.classifySeverity(
+        text,
+        reportType: _reportType,
+        category: _selectedCategory,
+      );
+      if (!mounted) return;
+      if (result == null) {
+        if (manual) {
+          _showSnack(
+              'Could not reach the triage model. Try again, or pick a severity manually.');
+        }
+        return;
+      }
+      final level = result.toPriorityLevel();
+      setState(() {
+        _priorityManuallySet = false;
+        _selectedPriority = level;
+        _aiSuggestedPriority = level;
+        _lastSeverityResult = result;
+      });
+    } finally {
+      if (mounted) setState(() => _isCheckingSeverity = false);
+    }
+  }
 
   // ─── GET CURRENT GPS LOCATION ────────────────────────
   // FIX — the pin button used to just show a "Getting current
@@ -271,15 +501,47 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     }
 
     if (!_formKey.currentState!.validate()) return;
+
+    // Category has no Form field/validator of its own (it's a chip grid,
+    // not a TextFormField) — check it here instead, now that nothing is
+    // pre-selected on open.
+    final category = _selectedCategory;
+    if (category == null) {
+      _showSnack('Please select a category.');
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
     try {
+      // Emergency reports have no title field (see _buildDetailsCard()) —
+      // fall back to the category itself so `subcategory` (a required,
+      // non-null DB column) still shows admins something readable
+      // instead of an empty string.
+      final title = _reportType == 'Emergency'
+          ? category
+          : _titleController.text.trim();
+
       final result = await _reportService.submitReport(
-        category: _selectedCategory,
-        subcategory: _titleController.text.trim(),
+        category: category,
+        subcategory: title,
         description: _descriptionController.text.trim(),
         location: _locationController.text.trim(),
         photoFiles: _attachedPhotos,
+        reportType: _reportType,
+        // FIX — used to only pass this through when the resident tapped a
+        // chip themselves, leaving it null otherwise so submitReport()
+        // would run its own AI classification at submit time. Now that
+        // _selectedPriority reliably reflects either their explicit pick
+        // or a result from tapping "Auto-Classify Severity" above,
+        // passing it straight through avoids re-running the exact same
+        // AI call a second time at submission. If neither ever happened
+        // (button never tapped, no manual pick), submitReport() below
+        // still runs its own classification as a fallback — reportType
+        // is passed along either way so that fallback stays consistent
+        // with the Emergency/Minor Concern toggle above.
+        priority: _selectedPriority,
+        severityResult: _lastSeverityResult,
       );
 
       if (!mounted) return;
@@ -440,15 +702,29 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
               padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 40.h),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  _buildCategorySection(),
+                  _buildReportTypeToggle(),
                   SizedBox(height: 20.h),
-                  _buildPrioritySection(),
+                  _buildCategorySection(),
                   SizedBox(height: 20.h),
                   _buildDetailsCard(),
                   SizedBox(height: 20.h),
-                  _buildLocationCard(),
-                  SizedBox(height: 20.h),
                   _buildPhotoCard(),
+                  // AI-assisted severity is Emergency-only — Minor Concern
+                  // reports always get Low severity anyway (see api.py's
+                  // classify_report()), so there's nothing for the model
+                  // to add there; the resident picks a level manually.
+                  if (_reportType == 'Emergency') ...[
+                    SizedBox(height: 20.h),
+                    _buildAutoClassifyButton(),
+                    if (_lastSeverityResult != null) ...[
+                      SizedBox(height: 16.h),
+                      _buildMlTriageResultPanel(),
+                    ],
+                  ],
+                  SizedBox(height: 20.h),
+                  _buildPrioritySection(),
+                  SizedBox(height: 20.h),
+                  _buildLocationCard(),
                   SizedBox(height: 24.h),
                   _buildSubmitButton(),
                   SizedBox(height: 16.h),
@@ -539,6 +815,63 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     );
   }
 
+  // ─── EMERGENCY / MINOR CONCERN TOGGLE ────────────────
+  // Matches api.py's `report_type` field exactly — 'Minor Concern' makes
+  // the backend force Low severity without even running the model.
+  Widget _buildReportTypeToggle() {
+    Widget segment(String type, String label, IconData icon) {
+      final isSelected = _reportType == type;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => _setReportType(type),
+          child: AnimatedContainer(
+            duration: 200.ms,
+            padding: EdgeInsets.symmetric(vertical: 14.h),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? ReportColors.heritagePurple
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(14.r),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon,
+                    size: 16.sp,
+                    color: isSelected ? Colors.white : _mutedText),
+                SizedBox(width: 8.w),
+                Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                    color: isSelected ? Colors.white : _mutedText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: EdgeInsets.all(6.w),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Row(
+        children: [
+          segment('Emergency', 'EMERGENCY', Icons.warning_rounded),
+          segment('Minor Concern', 'MINOR CONCERN', Icons.lightbulb_outline_rounded),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms);
+  }
+
   // ─── CATEGORY SELECTOR ──────────────────────────────
   Widget _buildCategorySection() {
     return Container(
@@ -547,15 +880,39 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('Category', Icons.category_rounded),
+          Row(
+            children: [
+              _sectionHeader('Category', Icons.category_rounded),
+              if (_isCheckingPhotoCategory) ...[
+                SizedBox(width: 10.w),
+                SizedBox(
+                  width: 13.sp,
+                  height: 13.sp,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(_mutedText),
+                  ),
+                ),
+                SizedBox(width: 6.w),
+                Text('Scanning photo…',
+                    style: GoogleFonts.inter(
+                        fontSize: 12.sp, color: _mutedText)),
+              ],
+            ],
+          ),
           SizedBox(height: 16.h),
           Wrap(
             spacing: 10.w,
             runSpacing: 10.h,
             children: _categories.map((cat) {
               final isSelected = _selectedCategory == cat['name'];
+              final isAiSuggested = !_categoryManuallySet &&
+                  _aiSuggestedCategory == cat['name'];
               return GestureDetector(
-                onTap: () => setState(() => _selectedCategory = cat['name']),
+                onTap: () => setState(() {
+                  _selectedCategory = cat['name'];
+                  _categoryManuallySet = true;
+                }),
                 child: AnimatedContainer(
                   duration: 200.ms,
                   padding:
@@ -592,15 +949,220 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                               : _bodyText,
                         ),
                       ),
+                      if (isAiSuggested) ...[
+                        SizedBox(width: 6.w),
+                        Icon(Icons.auto_awesome_rounded,
+                            size: 13.sp, color: cat['color'] as Color),
+                      ],
                     ],
                   ),
                 ),
               );
             }).toList(),
           ),
+          if (_aiSuggestedCategory != null && !_categoryManuallySet) ...[
+            SizedBox(height: 10.h),
+            Text(
+              'Detected from your photo — tap a different category to change it.',
+              style: GoogleFonts.inter(fontSize: 11.sp, color: _mutedText),
+            ),
+          ] else if (_selectedCategory == null) ...[
+            SizedBox(height: 10.h),
+            Text(
+              'Select a category, or attach a photo and we\'ll detect it for you.',
+              style: GoogleFonts.inter(fontSize: 11.sp, color: _mutedText),
+            ),
+          ],
         ],
       ),
     ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.04, end: 0);
+  }
+
+  // ─── AI: AUTO-CLASSIFY SEVERITY BUTTON ───────────────
+  Widget _buildAutoClassifyButton() {
+    return GestureDetector(
+      onTap: _isCheckingSeverity
+          ? null
+          : () => _classifySeverityFromDescription(manual: true),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(vertical: 16.h),
+        decoration: BoxDecoration(
+          color: ReportColors.heritagePurple.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16.r),
+          border: Border.all(
+              color: ReportColors.heritagePurple.withValues(alpha: 0.25)),
+        ),
+        child: Center(
+          child: _isCheckingSeverity
+              ? SizedBox(
+                  width: 20.w,
+                  height: 20.w,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        ReportColors.heritagePurple),
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.auto_awesome_rounded,
+                        size: 18.sp, color: ReportColors.heritagePurple),
+                    SizedBox(width: 8.w),
+                    Text(
+                      'AUTO-CLASSIFY SEVERITY',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                        color: ReportColors.heritagePurple,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  // ─── AI: ML TRIAGE RESULT PANEL ───────────────────────
+  // Shown after _classifySeverityFromDescription() returns a result —
+  // severity + confidence, a per-level score breakdown, and the detected
+  // language, straight from api.py's /classify response.
+  Widget _buildMlTriageResultPanel() {
+    final result = _lastSeverityResult!;
+    final severityColor = switch (result.severity) {
+      'High' => ReportColors.priorityHigh,
+      'Medium' => ReportColors.priorityMedium,
+      _ => ReportColors.priorityLow,
+    };
+
+    const languageLabels = {
+      'tagalog': 'TAGALOG',
+      'bikol': 'BIKOL',
+      'taglish': 'TAGLISH',
+      'bikol-english': 'BIKOL-ENGLISH',
+      'english': 'ENGLISH',
+    };
+    final languageLabel =
+        languageLabels[result.languageHint?.toLowerCase()] ?? 'ENGLISH';
+
+    // Fixed display order regardless of what order the backend's map
+    // happens to iterate in.
+    const levelOrder = ['High', 'Low', 'Medium'];
+
+    return Container(
+      padding: EdgeInsets.all(18.w),
+      decoration: BoxDecoration(
+        color: severityColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(color: severityColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome_rounded,
+                      size: 15.sp, color: severityColor),
+                  SizedBox(width: 6.w),
+                  Text(
+                    'ML TRIAGE RESULT',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                      color: severityColor,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                decoration: BoxDecoration(
+                  border: Border.all(color: severityColor.withValues(alpha: 0.4)),
+                  borderRadius: BorderRadius.circular(6.r),
+                ),
+                child: Text(
+                  languageLabel,
+                  style: GoogleFonts.inter(
+                      fontSize: 9.sp,
+                      fontWeight: FontWeight.w700,
+                      color: severityColor),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                result.severity.toUpperCase(),
+                style: GoogleFonts.poppins(
+                  fontSize: 24.sp,
+                  fontWeight: FontWeight.w800,
+                  color: severityColor,
+                ),
+              ),
+              SizedBox(width: 10.w),
+              Text(
+                '${result.confidence.toStringAsFixed(1)}% CONFIDENCE',
+                style: GoogleFonts.inter(fontSize: 11.sp, color: _mutedText),
+              ),
+            ],
+          ),
+          if (result.scores.isNotEmpty) ...[
+            SizedBox(height: 12.h),
+            ...levelOrder.where(result.scores.containsKey).map((level) {
+              final pct = result.scores[level] ?? 0;
+              final color = switch (level) {
+                'High' => ReportColors.priorityHigh,
+                'Medium' => ReportColors.priorityMedium,
+                _ => ReportColors.priorityLow,
+              };
+              return Padding(
+                padding: EdgeInsets.only(bottom: 6.h),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 52.w,
+                      child: Text(level.toUpperCase(),
+                          style: GoogleFonts.inter(
+                              fontSize: 10.sp, color: _mutedText)),
+                    ),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6.r),
+                        child: LinearProgressIndicator(
+                          value: (pct / 100).clamp(0, 1).toDouble(),
+                          minHeight: 6.h,
+                          backgroundColor: color.withValues(alpha: 0.12),
+                          valueColor: AlwaysStoppedAnimation<Color>(color),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    SizedBox(
+                      width: 36.w,
+                      child: Text('${pct.toStringAsFixed(0)}%',
+                          textAlign: TextAlign.end,
+                          style: GoogleFonts.inter(
+                              fontSize: 10.sp, color: _mutedText)),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    ).animate().fadeIn(duration: 250.ms);
   }
 
   // ─── PRIORITY SELECTOR ──────────────────────────────
@@ -611,10 +1173,42 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('Priority Level', Icons.flag_circle_rounded),
+          Row(
+            children: [
+              _sectionHeader('Priority Level', Icons.flag_circle_rounded),
+              if (_isCheckingSeverity) ...[
+                SizedBox(width: 10.w),
+                SizedBox(
+                  width: 13.sp,
+                  height: 13.sp,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(_mutedText),
+                  ),
+                ),
+                SizedBox(width: 6.w),
+                Text('Assessing severity…',
+                    style: GoogleFonts.inter(
+                        fontSize: 12.sp, color: _mutedText)),
+              ],
+            ],
+          ),
+          if (!_priorityManuallySet) ...[
+            SizedBox(height: 4.h),
+            Text(
+              _aiSuggestedPriority != null
+                  ? 'ML has suggested a level. You may override below.'
+                  : _reportType == 'Emergency'
+                      ? 'Describe the issue above, then tap Auto-Classify Severity — or pick a level yourself.'
+                      : 'Select the severity that best describes the situation.',
+              style: GoogleFonts.inter(fontSize: 11.sp, color: _mutedText),
+            ),
+          ],
           SizedBox(height: 14.h),
           ..._priorities.map((p) {
             final isSelected = _selectedPriority == p['level'];
+            final isAiSuggested =
+                !_priorityManuallySet && _aiSuggestedPriority == p['level'];
             final Color color = p['color'];
             return Padding(
               padding: EdgeInsets.only(bottom: 10.h),
@@ -623,7 +1217,10 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                 borderRadius: BorderRadius.circular(16.r),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16.r),
-                  onTap: () => setState(() => _selectedPriority = p['level']),
+                  onTap: () => setState(() {
+                    _selectedPriority = p['level'];
+                    _priorityManuallySet = true;
+                  }),
                   child: AnimatedContainer(
                     duration: 200.ms,
                     padding:
@@ -664,15 +1261,24 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                p['level'],
-                                style: GoogleFonts.poppins(
-                                  fontSize: 15.sp,
-                                  fontWeight: FontWeight.w600,
-                                  color: isSelected
-                                      ? _titleText
-                                      : _bodyText,
-                                ),
+                              Row(
+                                children: [
+                                  Text(
+                                    p['level'],
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 15.sp,
+                                      fontWeight: FontWeight.w600,
+                                      color: isSelected
+                                          ? _titleText
+                                          : _bodyText,
+                                    ),
+                                  ),
+                                  if (isAiSuggested) ...[
+                                    SizedBox(width: 6.w),
+                                    Icon(Icons.auto_awesome_rounded,
+                                        size: 13.sp, color: color),
+                                  ],
+                                ],
                               ),
                               Text(
                                 p['label'],
@@ -720,14 +1326,25 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
         children: [
           _sectionHeader('Issue Details', Icons.description_rounded),
           SizedBox(height: 16.h),
-          _buildTextField(
-            controller: _titleController,
-            hint: 'Brief title of the issue',
-            icon: Icons.title_rounded,
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Please enter a title' : null,
-          ),
-          SizedBox(height: 14.h),
+          // FIX — no title field for Emergency reports: someone reporting
+          // a fire shouldn't have to stop and compose a short title
+          // before they can describe what's happening. Removed from the
+          // widget tree entirely here (not just hidden) so its
+          // validator doesn't run and block submission — this is what
+          // was silently blocking "Submit Report" whenever the title was
+          // left blank. Minor Concern keeps it; a short label still
+          // helps admins scan a queue of routine complaints.
+          if (_reportType != 'Emergency') ...[
+            _buildTextField(
+              controller: _titleController,
+              hint: 'Brief title of the issue',
+              icon: Icons.title_rounded,
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? 'Please enter a title'
+                  : null,
+            ),
+            SizedBox(height: 14.h),
+          ],
           _buildTextField(
             controller: _descriptionController,
             hint:
@@ -934,7 +1551,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.r),
             image: DecorationImage(
-                image: FileImage(_attachedPhotos[index]), fit: BoxFit.cover),
+                image: MemoryImage(_attachedPhotos[index].bytes),
+                fit: BoxFit.cover),
           ),
         ),
         Positioned(
