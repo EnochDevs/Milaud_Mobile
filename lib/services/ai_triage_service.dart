@@ -67,11 +67,18 @@ class ImageVerificationResult {
   final bool isValidPhoto;
   final String? detectedCategory; // 'Fire' | 'Flooding' | 'Earthquake' | 'Landslide'
   final bool requiresManualReview;
+  // The backend's own human-readable verdict (e.g. "⚠️ Photo doesn't
+  // look like a disaster report photo. Needs manual review.", or the
+  // selfie/mismatch-specific wording) — reused as-is in the UI instead
+  // of re-deriving similar copy from isValidPhoto/requiresManualReview
+  // client-side and risking it drifting out of sync with api.py's cases.
+  final String? verdict;
 
   ImageVerificationResult({
     required this.isValidPhoto,
     this.detectedCategory,
     required this.requiresManualReview,
+    this.verdict,
   });
 
   factory ImageVerificationResult.fromJson(Map<String, dynamic> json) {
@@ -79,6 +86,7 @@ class ImageVerificationResult {
       isValidPhoto: json['is_valid_report_photo'] ?? false,
       detectedCategory: json['detected_disaster_category'] as String?,
       requiresManualReview: json['requires_human_review'] ?? true,
+      verdict: json['verdict'] as String?,
     );
   }
 }

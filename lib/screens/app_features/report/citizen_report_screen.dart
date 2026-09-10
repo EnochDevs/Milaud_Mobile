@@ -141,6 +141,12 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
   // review) without re-running the exact same classification a second
   // time at submission — see the submitReport() call in _submitReport().
   SeverityResult? _lastSeverityResult;
+  // The most recent photo-verification result — drives the "this photo
+  // doesn't look like a disaster photo" warning in _buildPhotoCard().
+  // Previously fetched but silently discarded: the UI only ever used it
+  // for category auto-select, never surfaced isValidPhoto /
+  // requiresManualReview to the resident at all.
+  ImageVerificationResult? _lastImageResult;
   bool _isCheckingPhotoCategory = false;
   bool _isCheckingSeverity = false;
   Timer? _severityDebounce;
@@ -321,8 +327,13 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     _detectCategoryFromPhoto(picked);
   }
 
-  void _removePhoto(int index) =>
-      setState(() => _attachedPhotos.removeAt(index));
+  void _removePhoto(int index) => setState(() {
+        _attachedPhotos.removeAt(index);
+        // The removed photo may be the one this result described —
+        // don't keep showing a stale warning/badge for a photo that's
+        // no longer attached.
+        _lastImageResult = null;
+      });
 
   // ─── AI: AUTO-DETECT CATEGORY FROM PHOTO ─────────────
   // Runs the moment a photo is attached (not only at final submission,
@@ -330,15 +341,25 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
   // fields) so the resident sees their category chip react immediately —
   // e.g. attaching a photo of a burning building auto-selects "Fire".
   // Never overrides a category the resident already picked themselves.
+  // FIX — this used to bail out at the very top whenever a category had
+  // already been manually picked, which also skipped running the check
+  // at all — so a resident who picked a category first, then attached
+  // an irrelevant/non-disaster photo, never got the API's
+  // is_valid_report_photo / requires_human_review warning either. The
+  // category auto-select and the validity warning are two independent
+  // things the same API call returns; only the former should respect a
+  // manual category pick, not the whole check.
   Future<void> _detectCategoryFromPhoto(ReportPhoto photo) async {
-    if (_categoryManuallySet) return;
     if (!mounted) return;
     setState(() => _isCheckingPhotoCategory = true);
     try {
       final result =
           await _ai.verifyImage(photo.bytes, filename: photo.filename);
-      if (!mounted || _categoryManuallySet) return;
-      final matched = _aiCategoryMap[result?.detectedCategory];
+      if (!mounted) return;
+      setState(() => _lastImageResult = result);
+      if (result == null || _categoryManuallySet) return;
+
+      final matched = _aiCategoryMap[result.detectedCategory];
       if (matched == null) return;
       setState(() {
         // A detected Fire/Flooding only exists as a category chip under
@@ -1472,6 +1493,42 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
             )
           else
             _emptyPhotoArea(),
+          // FIX — verifyImage() already told the app whether this photo
+          // looks like a real disaster photo at all, but nothing ever
+          // showed that to the resident — a random/irrelevant photo was
+          // silently accepted with no feedback. Only api.py's own
+          // category-detection was ever surfaced (via the category
+          // chip auto-select above), never the validity check.
+          if (_lastImageResult != null &&
+              _lastImageResult!.requiresManualReview) ...[
+            SizedBox(height: 14.h),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+              decoration: BoxDecoration(
+                color: ReportColors.priorityMedium.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14.r),
+                border: Border.all(
+                    color: ReportColors.priorityMedium.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: ReportColors.priorityMedium, size: 20.sp),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Text(
+                      _lastImageResult!.verdict ??
+                          "This photo doesn't look like a disaster-related photo. You can still submit, but it may need manual review.",
+                      style: GoogleFonts.inter(
+                          fontSize: 12.sp, color: _titleText, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     )
