@@ -2,13 +2,9 @@
 //
 // Talks to the trained ML backend (severity classification + image
 // verification for disaster-type reports) — see api.py for the actual
-// FastAPI server. Currently pointed at a LOCAL dev instance
-// (`python -m uvicorn api:app --host 0.0.0.0 --port 8000`) running on the
-// same machine as this app, for testing — nothing is deployed publicly
-// yet. Swap _aiApiBaseUrl below to a real hosted URL (e.g. a Hugging Face
-// Space, matching how the previous placeholder backend was deployed) once
-// this needs to work from anywhere other than localhost, including any
-// real Android/iOS build.
+// FastAPI server. Deployed on Hugging Face Spaces (free cpu-basic tier —
+// it sleeps after inactivity and takes a bit to wake on the first
+// request after a while): https://jus1012-triage-delro-api.hf.space
 //
 // Used by CitizenReportService.submitReport() in app_services.dart to
 // auto-suggest a severity level and flag whether an attached photo looks
@@ -20,7 +16,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
-const String _aiApiBaseUrl = 'http://localhost:8000';
+const String _aiApiBaseUrl = 'https://jus1012-triage-delro-api.hf.space';
 
 class SeverityResult {
   final String severity; // 'Critical' | 'High' | 'Medium' | 'Low'

@@ -108,7 +108,13 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - .env
+    # FIX — was `.env`. Netlify (and some other static hosts) silently
+    # excludes dotfiles from what actually gets deployed, even though it
+    # sat right there in the local build output — Supabase never
+    # initialized on the live site as a result (every auth call failed
+    # with a generic error). A leading-dot-free name sidesteps this on
+    # any host, not just Netlify.
+    - app.env
     - assets/images/
     - assets/images/home_screen/
     - assets/images/intro_page/

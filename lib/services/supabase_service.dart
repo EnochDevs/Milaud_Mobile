@@ -16,7 +16,12 @@ class SupabaseService {
       // Not yet initialized, proceed normally
     }
 
-    await dotenv.load(fileName: ".env");
+    // FIX — was ".env". Netlify (and other static hosts) silently drop
+    // dotfiles from what's actually deployed, so this asset 404'd on the
+    // live site even though it built correctly locally — Supabase never
+    // initialized there, which surfaced as every login/signup just
+    // failing with a generic error. See pubspec.yaml's assets list.
+    await dotenv.load(fileName: "app.env");
 
     await Supabase.initialize(
       url:     dotenv.env['SUPABASE_URL']!,
