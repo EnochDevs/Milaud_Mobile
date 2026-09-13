@@ -1,11 +1,11 @@
 {
-    "name": "may_laud",
-    "short_name": "may_laud",
+    "name": "Maylaud",
+    "short_name": "Maylaud",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Maylaud — participatory governance app for Milaor, Camarines Sur.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

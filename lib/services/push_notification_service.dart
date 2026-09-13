@@ -51,7 +51,7 @@ class PushNotificationService {
     'milaud_default_channel', // must match AndroidManifest.xml meta-data
     'General Notifications',
     description:
-        'Announcements, document request updates, and alerts from Milaud.',
+        'Announcements, document request updates, and alerts from Maylaud.',
     importance: Importance.high,
   );
 

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-/// Performance optimization utilities for the Milaud app
+/// Performance optimization utilities for the Maylaud app
 class PerformanceOptimization {
   /// Configure image cache settings
   static void configureImageCache() {

@@ -154,6 +154,21 @@ class AuthProvider extends StateNotifier<AuthState> {
         data = await _client.from('profiles').select().eq('id', uid).single();
       }
 
+      // Enforce mobile-resident-only access: if this profile's role is
+      // 'admin' (a web-registered account, per AuthContext.jsx's own
+      // symmetric check on the admin panel), it doesn't belong here — kick
+      // it straight back out instead of letting it in as a resident.
+      if (data['role'] == 'admin') {
+        await _client.auth.signOut();
+        state = state.copyWith(
+          isAuthenticated: false,
+          isLoading: false,
+          error:
+              'This is an Admin account. Please use the Maylaud web portal to log in.',
+        );
+        return;
+      }
+
       final user = User.fromJson({...data, 'email': email});
       state = state.copyWith(
           user: user, isAuthenticated: true, isLoading: false, error: null);

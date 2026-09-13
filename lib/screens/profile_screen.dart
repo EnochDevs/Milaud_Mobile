@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User, LocalStorage;
 import 'package:may_laud/providers/auth_provider.dart';
 import 'package:may_laud/providers/app_providers.dart';
 import 'package:may_laud/providers/content_providers.dart';
@@ -14,7 +15,7 @@ import 'profile/privacy_security_sheet.dart';
 import 'profile/notification_preferences_sheet.dart';
 import 'profile/help_support_sheet.dart';
 import 'profile/about_milaud_sheet.dart';
-import 'password/create_new_password_screen.dart';
+import 'otp_verification/forgot_password_otp_screen.dart';
 
 // Brand colors now sourced from AppColors — no local duplication needed.
 
@@ -186,9 +187,44 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ]));
   }
 
+  // FIX — this used to jump straight to CreateNewPasswordScreen (the same
+  // screen the OTP-verified forgot-password flow lands on), skipping the
+  // OTP step entirely. Anyone with the phone unlocked and the app open
+  // could silently take over the account's password — no re-verification
+  // of any kind. Now it sends the same recovery code used by "Forgot
+  // Password" and requires it before letting the new-password form show,
+  // whether the request came from a signed-in session or not.
+  Future<void> _startChangePassword(User? user) async {
+    final email = user?.email;
+    if (email == null || email.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Could not find your account email. Please try again later.')),
+      );
+      return;
+    }
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => OtpVerificationScreen(email: email)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content:
+                Text('Could not send a verification code. Please try again.')),
+      );
+    }
+  }
+
   Widget _buildAccountActionsCard(User? user, AppColorScheme colors) => _buildCard('Account', colors, children: [
     _actionTile(Icons.edit_outlined,     'Edit Profile',       'Update your personal information',      () => showEditProfileSheet(context, user), colors),
-    _actionTile(Icons.lock_outline,      'Change Password',    'Secure your account with a new password',() => Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateNewPasswordScreen())),     colors),
+    _actionTile(Icons.lock_outline,      'Change Password',    'Secure your account with a new password',() => _startChangePassword(user),     colors),
     _actionTile(Icons.security_outlined, 'Privacy & Security', 'Manage your data and account security', () => showPrivacySecuritySheet(context),    colors),
   ]);
 

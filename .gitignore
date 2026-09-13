@@ -49,3 +49,6 @@ app.*.map.json
 app.env
 # Local Netlify folder
 .netlify
+
+# JVM crash dumps (Gradle builds can drop these, and they're huge)
+*.hprof
