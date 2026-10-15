@@ -37,7 +37,7 @@ abstract final class AppTheme {
   static const Color neutralGray800 = AppColors.neutralGray800;
 
   // ── Brand color shims (canonical values live in AppColors) ───────────
-  static const Color milaorBlue     = AppColors.milaorBlue;
+  static Color get milaorBlue       => AppColors.milaorBlue;
   static const Color philippineGold = AppColors.philippineGold;
   static const Color philippineRed  = AppColors.error;
 

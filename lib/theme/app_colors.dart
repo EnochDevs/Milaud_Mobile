@@ -24,27 +24,55 @@ import 'package:flutter/material.dart';
 
 abstract final class AppColors {
   // --- Brand palette ---
-  static const Color milaorBlue      = Color(0xFF0056A3); // Primary
+  //
+  // The brand colors below are intentionally *mutable* rather than `const`.
+  // The web admin's "App Customization" page writes a brand + accent color to
+  // the Supabase `app_theme` table; the app applies them through [applyBrand]
+  // (see providers/app_theme_provider.dart). Because every screen already reads
+  // these same names, one change repaints the whole app with no per-screen
+  // edits. The values here are just the shipped defaults.
+  static Color milaorBlue      = const Color(0xFF0056A3); // Primary / accent
   static const Color philippineGold  = Color(0xFFFDB913); // Secondary
   static const Color philippineRed   = Color(0xFFCE1126); // Accent
   static const Color philippineGreen = Color(0xFF0C5A43); // Success
 
   // --- Heritage purple palette (used in home, profile, sign-in, sheets) ---
-  static const Color heritagePurple = Color(0xFF4C229C); // main brand purple
-  static const Color riverFlow      = Color(0xFF643EB5); // mid purple
-  static const Color deepAnchor     = Color(0xFF24005B); // dark purple anchor
+  static Color heritagePurple = const Color(0xFF4C229C); // main brand purple
+  static Color riverFlow      = const Color(0xFF643EB5); // mid purple
+  static Color deepAnchor     = const Color(0xFF24005B); // dark purple anchor
 
   /// Gradient used on home header, profile header, sign-in screen, etc.
-  static const LinearGradient headerGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [deepAnchor, heritagePurple],
-  );
+  /// A getter (not `const`) so it re-resolves after [applyBrand] runs.
+  static LinearGradient get headerGradient => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [deepAnchor, heritagePurple],
+      );
 
   /// Gradient used on FAB and accent buttons.
-  static const LinearGradient fabGradient = LinearGradient(
-    colors: [riverFlow, heritagePurple],
-  );
+  static LinearGradient get fabGradient => LinearGradient(
+        colors: [riverFlow, heritagePurple],
+      );
+
+  /// Pushes a brand palette from the admin panel into the live palette.
+  ///
+  /// [brand] drives the purple family — header gradient, FAB, accents, sheets —
+  /// and its mid / anchor shades are derived from it so the family stays
+  /// coherent no matter which hue is picked. [accent] (optional) drives the
+  /// Material "primary" controls (links, focused inputs, default buttons),
+  /// which the light theme maps to [milaorBlue].
+  static void applyBrand(Color brand, {Color? accent}) {
+    heritagePurple = brand;
+    riverFlow = shift(brand, 0.10);
+    deepAnchor = shift(brand, -0.24);
+    if (accent != null) milaorBlue = accent;
+  }
+
+  /// Returns [c] lightened (+) or darkened (−) by [delta] in HSL space.
+  static Color shift(Color c, double delta) {
+    final hsl = HSLColor.fromColor(c);
+    return hsl.withLightness((hsl.lightness + delta).clamp(0.0, 1.0)).toColor();
+  }
 
   // --- Semantic (mode-independent) ---
   static const Color success      = philippineGreen;
@@ -72,11 +100,11 @@ abstract final class AppColors {
   static const Color cardWhite  = Color(0xFFFFFFFF);
 
   // --- Gradient ---
-  static const LinearGradient primaryGradient = LinearGradient(
-    colors: [milaorBlue, Color(0xFF0077CC)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  static LinearGradient get primaryGradient => LinearGradient(
+        colors: [milaorBlue, shift(milaorBlue, 0.12)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
 
   // --- Mode palettes ---
   static const AppColorScheme light = _LightColors();
@@ -203,8 +231,10 @@ final class _DarkColors extends AppColorScheme {
   @override Color get iconPrimary   => const Color(0xFF66B5FF);
   @override Color get iconMuted     => const Color(0xFF9E9E9E);
 
-  // Accent purple (softened for dark mode readability)
-  @override Color get accentPurple  => const Color(0xFFAB8FE0);
+  // Accent purple (softened for dark mode readability) — derived from the live
+  // brand color so a customized palette stays legible on dark surfaces.
+  @override
+  Color get accentPurple => AppColors.shift(AppColors.heritagePurple, 0.24);
 
   // Semantic surfaces
   @override Color get errorSurface   => const Color(0xFF3D1515);

@@ -269,7 +269,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                               gradient: _isLoading
                                   ? LinearGradient(
                                       colors: [AppColors.neutralGray200, AppColors.neutralGray500])
-                                  : const LinearGradient(
+                                  : LinearGradient(
                                       colors: [AppColors.heritagePurple, AppColors.riverFlow],
                                     ),
                               boxShadow: _isLoading

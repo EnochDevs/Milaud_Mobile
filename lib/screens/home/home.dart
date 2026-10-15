@@ -12,9 +12,9 @@ import '../app_features/flood_alert/flood_alert_screen.dart';
 /// Public alias kept for backward-compatibility with screens that
 /// import home.dart and reference HomeColors.*.
 abstract final class HomeColors {
-  static const Color heritagePurple = AppColors.heritagePurple;
-  static const Color riverFlow      = AppColors.riverFlow;
-  static const Color deepAnchor     = AppColors.deepAnchor;
+  static Color get heritagePurple => AppColors.heritagePurple;
+  static Color get riverFlow      => AppColors.riverFlow;
+  static Color get deepAnchor     => AppColors.deepAnchor;
   static const Color successGreen   = AppColors.successAlt;
   static const Color warningAmber   = AppColors.warningAlt;
   static const Color infoBlue       = AppColors.infoAlt;
@@ -31,8 +31,8 @@ abstract final class HomeColors {
   /// Muted text — captions, labels, placeholders (delegates to AppColors).
   static const Color textMuted = AppColors.neutralGray500;
 
-  static const LinearGradient headerGradient = AppColors.headerGradient;
-  static const LinearGradient fabGradient    = AppColors.fabGradient;
+  static LinearGradient get headerGradient => AppColors.headerGradient;
+  static LinearGradient get fabGradient    => AppColors.fabGradient;
 }
 
 // Internal shorthand (private — only used inside home.dart)
@@ -90,7 +90,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           flexibleSpace: FlexibleSpaceBar(
             titlePadding: EdgeInsets.zero,
             background: Container(
-              decoration: const BoxDecoration(gradient: _Brand.headerGradient),
+              decoration: BoxDecoration(gradient: _Brand.headerGradient),
               child: SafeArea(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 0),

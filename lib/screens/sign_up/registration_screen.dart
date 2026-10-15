@@ -1,10 +1,11 @@
 // lib/screens/sign_up/registration_screen.dart
+// ignore_for_file: unused_local_variable
+
 import 'package:flutter/material.dart';
 import 'package:may_laud/theme/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:may_laud/providers/auth_provider.dart';
-import 'package:may_laud/screens/home/nav_bar_button.dart';
 import 'package:may_laud/screens/otp_verification/registration_otp_screen.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -20,17 +21,34 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
 
   String? _selectedBarangay;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
 
   final List<String> _barangays = [
-    "San Roque", "Del Rosario", "San Jose", "Amparado", "Lipot",
-    "Borongborongan", "San Antonio", "Capucnasan", "Santo Domingo",
-    "Alimbuyog", "Balagbag", "Cabugao", "Dalipay", "Flordeliz",
-    "Mayaopayawan", "Maycatmon", "Maydaso", "San Miguel", "San Vicente", "Tarusanan"
+    "San Roque",
+    "Del Rosario",
+    "San Jose",
+    "Amparado",
+    "Lipot",
+    "Borongborongan",
+    "San Antonio",
+    "Capucnasan",
+    "Santo Domingo",
+    "Alimbuyog",
+    "Balagbag",
+    "Cabugao",
+    "Dalipay",
+    "Flordeliz",
+    "Mayaopayawan",
+    "Maycatmon",
+    "Maydaso",
+    "San Miguel",
+    "San Vicente",
+    "Tarusanan"
   ];
 
   @override
@@ -55,12 +73,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final text = _phoneController.text;
     // Remove all non-digit characters
     String digits = text.replaceAll(RegExp(r'\D'), '');
-    
+
     // Limit to 10 digits (Philippine number without country code)
     if (digits.length > 10) {
       digits = digits.substring(0, 10);
     }
-    
+
     // Format the number: XXX-XXX-XXXX
     String formatted = '';
     if (digits.isNotEmpty) {
@@ -69,10 +87,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       } else if (digits.length <= 6) {
         formatted = '${digits.substring(0, 3)}-${digits.substring(3)}';
       } else {
-        formatted = '${digits.substring(0, 3)}-${digits.substring(3, 6)}-${digits.substring(6)}';
+        formatted =
+            '${digits.substring(0, 3)}-${digits.substring(3, 6)}-${digits.substring(6)}';
       }
     }
-    
+
     // Update the text field if the formatted text is different
     if (_phoneController.text != formatted) {
       final selection = _phoneController.selection;
@@ -99,15 +118,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       );
       return;
     }
-    
+
     final rawPhone = _getRawPhoneNumber();
     if (rawPhone.length != 10) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid 10-digit phone number')),
+        const SnackBar(
+            content: Text('Please enter a valid 10-digit phone number')),
       );
       return;
     }
-    
+
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Passwords do not match')),
@@ -117,7 +137,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     final authNotifier = ref.read(authProvider.notifier);
     final success = await authNotifier.register(
-      name: '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}',
+      name:
+          '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}',
       email: _emailController.text.trim(),
       password: _passwordController.text,
       phone: rawPhone,
@@ -132,7 +153,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         MaterialPageRoute(
           builder: (_) => VerificationScreen(
             email: _emailController.text.trim(),
-            name: '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}',
+            name:
+                '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}',
             phone: rawPhone,
             address: _selectedBarangay!,
           ),
@@ -142,7 +164,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       final authState = ref.read(authProvider);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(authState.error ?? 'Registration failed. Please try again.'),
+          content:
+              Text(authState.error ?? 'Registration failed. Please try again.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -162,7 +185,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           builder: (ctx, setModalState) {
             return Container(
               decoration: BoxDecoration(
-                color: sheetDark ? AppColors.deepAnchor : AppColors.neutralWhite,
+                color:
+                    sheetDark ? AppColors.deepAnchor : AppColors.neutralWhite,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
               ),
               child: Padding(
@@ -179,7 +203,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       width: 50.w,
                       height: 5.h,
                       decoration: BoxDecoration(
-                        color: sheetDark ? Colors.white24 : AppColors.neutralGray200,
+                        color: sheetDark
+                            ? Colors.white24
+                            : AppColors.neutralGray200,
                         borderRadius: BorderRadius.circular(10.r),
                       ),
                     ),
@@ -193,13 +219,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           style: TextStyle(
                             fontSize: 20.sp,
                             fontWeight: FontWeight.bold,
-                            color: sheetDark ? AppColors.riverFlow : AppColors.heritagePurple,
+                            color: sheetDark
+                                ? AppColors.riverFlow
+                                : AppColors.heritagePurple,
                           ),
                         ),
                         GestureDetector(
                           onTap: () => Navigator.pop(ctx),
                           child: Icon(Icons.close,
-                              color: sheetDark ? AppColors.riverFlow : AppColors.heritagePurple),
+                              color: sheetDark
+                                  ? AppColors.riverFlow
+                                  : AppColors.heritagePurple),
                         ),
                       ],
                     ),
@@ -223,7 +253,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               decoration: BoxDecoration(
                                 color: _selectedBarangay == item
                                     ? (sheetDark
-                                        ? AppColors.heritagePurple.withValues(alpha: 0.5)
+                                        ? AppColors.heritagePurple
+                                            .withValues(alpha: 0.5)
                                         : const Color(0xFFF3E5F5))
                                     : (sheetDark
                                         ? AppColors.deepAnchor
@@ -303,25 +334,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final bubbleBg3Gradient = isDark
         ? [cs.primary.withOpacity(0.12), Colors.transparent]
         : [AppColors.riverFlow.withOpacity(0.4), Colors.transparent];
-    final titleColor =
-        isDark ? cs.onBackground : AppColors.deepAnchor;
-    final subtitleColor = isDark
-        ? cs.onBackground.withOpacity(0.6)
-        : AppColors.neutralGray500;
+    final titleColor = isDark ? cs.onBackground : AppColors.deepAnchor;
+    final subtitleColor =
+        isDark ? cs.onBackground.withOpacity(0.6) : AppColors.neutralGray500;
     final formBg = isDark ? cs.surface : AppColors.warmHearth;
     final inputBg = isDark ? cs.background : AppColors.neutralWhite;
-    final inputBorder = isDark
-        ? cs.onSurface.withOpacity(0.15)
-        : AppColors.neutralGray200;
-    final inputIconColor = isDark
-        ? cs.onSurface.withOpacity(0.5)
-        : AppColors.neutralGray500;
+    final inputBorder =
+        isDark ? cs.onSurface.withOpacity(0.15) : AppColors.neutralGray200;
+    final inputIconColor =
+        isDark ? cs.onSurface.withOpacity(0.5) : AppColors.neutralGray500;
     final labelColor =
         isDark ? cs.onSurface.withOpacity(0.85) : AppColors.neutralGray800;
     final hintColor =
         isDark ? cs.onSurface.withOpacity(0.45) : AppColors.neutralGray500;
-    final accentPurple =
-        isDark ? cs.primary : AppColors.heritagePurple;
+    final accentPurple = isDark ? cs.primary : AppColors.heritagePurple;
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -367,16 +393,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: SizedBox(
               height: 240.h,
               width: double.infinity,
-              child: CustomPaint(
-                  painter: _WavePainter(isDark: isDark, cs: cs)),
+              child: CustomPaint(painter: _WavePainter(isDark: isDark, cs: cs)),
             ),
           ),
 
           // Main content
           SafeArea(
             child: SingleChildScrollView(
-              padding:
-                  EdgeInsets.symmetric(horizontal: 24.w, vertical: 30.h),
+              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 30.h),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -406,8 +430,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   SizedBox(height: 8.h),
                   Text(
                     "Fill in your details to get started",
-                    style:
-                        TextStyle(fontSize: 14.sp, color: subtitleColor),
+                    style: TextStyle(fontSize: 14.sp, color: subtitleColor),
                   ),
                   SizedBox(height: 30.h),
 
@@ -551,7 +574,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               padding: EdgeInsets.symmetric(vertical: 16.h),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(40.r),
-                                gradient: const LinearGradient(
+                                gradient: LinearGradient(
                                   colors: [
                                     AppColors.heritagePurple,
                                     AppColors.riverFlow,
@@ -678,8 +701,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   decoration: InputDecoration(
                     hintText: hintText,
                     border: InputBorder.none,
-                    hintStyle: TextStyle(
-                        color: cs.onSurface.withOpacity(0.4)),
+                    hintStyle: TextStyle(color: cs.onSurface.withOpacity(0.4)),
                   ),
                 ),
               ),
@@ -699,10 +721,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     required ColorScheme cs,
     required bool isDark,
   }) {
-    final prefixBg =
-        isDark ? const Color(0xFF2A2A3A) : const Color(0xFFF5F5F5);
-    final prefixText =
-        isDark ? Colors.white70 : const Color(0xFF333333);
+    final prefixBg = isDark ? const Color(0xFF2A2A3A) : const Color(0xFFF5F5F5);
+    final prefixText = isDark ? Colors.white70 : const Color(0xFF333333);
     final dividerColor = isDark ? Colors.white12 : AppColors.neutralGray200;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -726,8 +746,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           child: Row(
             children: [
               Container(
-                padding:
-                    EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
                 decoration: BoxDecoration(
                   color: prefixBg,
                   borderRadius: BorderRadius.circular(12.r),
@@ -738,8 +757,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     SizedBox(width: 6.w),
                     Text("+63",
                         style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: prefixText)),
+                            fontWeight: FontWeight.w600, color: prefixText)),
                     SizedBox(width: 4.w),
                     Icon(Icons.keyboard_arrow_down,
                         size: 18.sp, color: inputIconColor),
@@ -747,8 +765,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
               ),
               SizedBox(width: 10.w),
-              Container(
-                  width: 1.w, height: 24.h, color: dividerColor),
+              Container(width: 1.w, height: 24.h, color: dividerColor),
               SizedBox(width: 10.w),
               Expanded(
                 child: TextField(
@@ -757,8 +774,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   style: TextStyle(color: cs.onSurface),
                   decoration: InputDecoration(
                     hintText: "Enter your phone number",
-                    hintStyle: TextStyle(
-                        color: cs.onSurface.withOpacity(0.4)),
+                    hintStyle: TextStyle(color: cs.onSurface.withOpacity(0.4)),
                     border: InputBorder.none,
                   ),
                 ),
@@ -793,8 +809,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         GestureDetector(
           onTap: _showBarangayPicker,
           child: Container(
-            padding:
-                EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
             decoration: BoxDecoration(
               color: inputBg,
               borderRadius: BorderRadius.circular(16.r),
@@ -850,8 +865,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 fontSize: 14.sp,
                 color: labelColor)),
         SizedBox(height: 4.h),
-        Text(subtitle,
-            style: TextStyle(fontSize: 12.sp, color: hintColor)),
+        Text(subtitle, style: TextStyle(fontSize: 12.sp, color: hintColor)),
         SizedBox(height: 8.h),
         Container(
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
@@ -872,14 +886,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   decoration: InputDecoration(
                     hintText: hintText,
                     border: InputBorder.none,
-                    hintStyle: TextStyle(
-                        color: cs.onSurface.withOpacity(0.4)),
+                    hintStyle: TextStyle(color: cs.onSurface.withOpacity(0.4)),
                   ),
                 ),
               ),
               IconButton(
-                icon: Icon(
-                    obscure ? Icons.visibility_off : Icons.visibility,
+                icon: Icon(obscure ? Icons.visibility_off : Icons.visibility,
                     color: inputIconColor),
                 onPressed: onToggle,
               ),
@@ -899,12 +911,10 @@ class _WavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final fillColor = isDark
-        ? cs.primary.withOpacity(0.08)
-        : AppColors.warmHearth;
-    final strokeColor = isDark
-        ? cs.primary.withOpacity(0.25)
-        : AppColors.riverFlow;
+    final fillColor =
+        isDark ? cs.primary.withOpacity(0.08) : AppColors.warmHearth;
+    final strokeColor =
+        isDark ? cs.primary.withOpacity(0.25) : AppColors.riverFlow;
 
     final fillWave = Paint()
       ..color = fillColor
@@ -917,10 +927,8 @@ class _WavePainter extends CustomPainter {
 
     final path1 = Path();
     path1.moveTo(0, 70);
-    path1.quadraticBezierTo(
-        size.width * 0.25, 20, size.width * 0.5, 90);
-    path1.quadraticBezierTo(
-        size.width * 0.75, 150, size.width, 70);
+    path1.quadraticBezierTo(size.width * 0.25, 20, size.width * 0.5, 90);
+    path1.quadraticBezierTo(size.width * 0.75, 150, size.width, 70);
     path1.lineTo(size.width, size.height);
     path1.lineTo(0, size.height);
     path1.close();
@@ -929,10 +937,8 @@ class _WavePainter extends CustomPainter {
 
     final path2 = Path();
     path2.moveTo(0, 90);
-    path2.quadraticBezierTo(
-        size.width * 0.3, 40, size.width * 0.6, 110);
-    path2.quadraticBezierTo(
-        size.width * 0.85, 170, size.width, 100);
+    path2.quadraticBezierTo(size.width * 0.3, 40, size.width * 0.6, 110);
+    path2.quadraticBezierTo(size.width * 0.85, 170, size.width, 100);
 
     canvas.drawPath(path2, lineWave);
   }

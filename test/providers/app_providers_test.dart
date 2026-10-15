@@ -1,8 +1,41 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:may_laud/providers/app_providers.dart';
+import 'package:may_laud/core/local_storage.dart';
+
+// LocalStorage.init() calls Hive.initFlutter(), which asks path_provider
+// for the app's documents directory — a real platform channel with no
+// implementation in a plain `flutter test` run (MissingPluginException).
+// Point it at a throwaway temp directory instead of touching a real
+// device/emulator filesystem. (Same helper as auth_provider_test.dart.)
+class _FakePathProviderPlatform extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  final String _path =
+      Directory.systemTemp.createTempSync('milaud_test_').path;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => _path;
+}
 
 void main() {
+  // FIX — AppSettingsNotifier's constructor reads LocalStorage.isDarkMode()
+  // (see _loadSavedSettings() in app_providers.dart), which touches the
+  // `static late SharedPreferences _prefs` field. Without LocalStorage.init()
+  // every test in this file died with
+  //   LateInitializationError: Field '_prefs' has not been initialized.
+  // The real app initializes storage in main() before the first widget
+  // build; mirror that here.
+  setUp(() async {
+    PathProviderPlatform.instance = _FakePathProviderPlatform();
+    SharedPreferences.setMockInitialValues({});
+    await LocalStorage.init();
+  });
+
   group('AppSettingsNotifier Tests', () {
     late ProviderContainer container;
     late AppSettingsNotifier notifier;

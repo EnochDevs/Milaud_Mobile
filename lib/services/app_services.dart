@@ -39,10 +39,10 @@ class AnnouncementService {
     bool isImportant = false,
   }) async {
     await SupabaseService.client.from('announcements').insert({
-      'title':        title,
-      'description':  description,
-      'category':     category,
-      'image_url':    imageUrl,
+      'title': title,
+      'description': description,
+      'category': category,
+      'image_url': imageUrl,
       'is_important': isImportant,
     });
     await fetchAnnouncements();
@@ -78,9 +78,9 @@ class NotificationService {
 
     await SupabaseService.client.from('notifications').insert({
       'user_id': uid,
-      'title':   title,
+      'title': title,
       'message': message,
-      'type':    type,
+      'type': type,
     });
     await fetchNotifications();
   }
@@ -101,33 +101,43 @@ class DocumentService {
   Future<List<Map<String, dynamic>>> fetchDocumentTypes() async {
     return [
       {
-        'id': '1', 'name': 'Barangay Clearance',
+        'id': '1',
+        'name': 'Barangay Clearance',
         'description': 'Certificate of residency and good moral character',
-        'processingTime': '1-2 days', 'fee': '₱50.00',
+        'processingTime': '1-2 days',
+        'fee': '₱50.00',
         'requirements': ['Valid ID', 'Proof of residency'],
       },
       {
-        'id': '2', 'name': 'Business Permit',
+        'id': '2',
+        'name': 'Business Permit',
         'description': 'License to operate a business in Milaor',
-        'processingTime': '3-5 days', 'fee': '₱500.00 - ₱5,000.00',
+        'processingTime': '3-5 days',
+        'fee': '₱500.00 - ₱5,000.00',
         'requirements': ['DTI/SEC registration', 'Proof of business address'],
       },
       {
-        'id': '3', 'name': 'Certificate of Indigency',
+        'id': '3',
+        'name': 'Certificate of Indigency',
         'description': 'Proof of low-income status',
-        'processingTime': '1 day', 'fee': '₱20.00',
+        'processingTime': '1 day',
+        'fee': '₱20.00',
         'requirements': ['Valid ID', 'Proof of income'],
       },
       {
-        'id': '4', 'name': 'Police Clearance',
+        'id': '4',
+        'name': 'Police Clearance',
         'description': 'Certificate of no criminal record',
-        'processingTime': '2-3 days', 'fee': '₱100.00',
+        'processingTime': '2-3 days',
+        'fee': '₱100.00',
         'requirements': ['Valid ID', '2x2 photo', 'Barangay clearance'],
       },
       {
-        'id': '5', 'name': 'Building Permit',
+        'id': '5',
+        'name': 'Building Permit',
         'description': 'Authorization for construction projects',
-        'processingTime': '7-14 days', 'fee': 'Based on project cost',
+        'processingTime': '7-14 days',
+        'fee': 'Based on project cost',
         'requirements': ['Land title', 'Building plans'],
       },
     ];
@@ -151,20 +161,21 @@ class DocumentService {
     final row = await SupabaseService.client
         .from('document_requests')
         .insert({
-          'user_id':       uid,
+          'user_id': uid,
           'document_type': docType['name'],
-          'purpose':       purpose,
-          'fee':           docType['fee'],
+          'purpose': purpose,
+          'fee': docType['fee'],
         })
         .select()
         .single();
 
     return {
-      'requestId':    row['id'],
-      'status':       row['status'],
-      'submittedAt':  row['created_at'],
+      'requestId': row['id'],
+      'status': row['status'],
+      'submittedAt': row['created_at'],
       'documentType': row['document_type'],
-      'message':      'Your request has been submitted. You will be notified when it\'s ready.',
+      'message':
+          'Your request has been submitted. You will be notified when it\'s ready.',
     };
   }
 
@@ -176,20 +187,20 @@ class DocumentService {
         .single();
 
     return {
-      'requestId':   row['id'],
-      'status':      row['status'],
+      'requestId': row['id'],
+      'status': row['status'],
       'lastUpdated': row['created_at'],
-      'message':     _statusMessage(row['status'] as String),
+      'message': _statusMessage(row['status'] as String),
     };
   }
 
   String _statusMessage(String status) {
     const map = {
-      'pending':    'Your request is awaiting review.',
+      'pending': 'Your request is awaiting review.',
       'processing': 'Your document is being processed.',
-      'ready':      'Your document is ready for pickup.',
-      'completed':  'Document has been picked up.',
-      'rejected':   'Request was rejected. Please resubmit.',
+      'ready': 'Your document is ready for pickup.',
+      'completed': 'Document has been picked up.',
+      'rejected': 'Request was rejected. Please resubmit.',
     };
     return map[status] ?? 'Status unknown.';
   }
@@ -206,20 +217,22 @@ class FloodAlertService {
 
     if ((rows as List).isEmpty) {
       return {
-        'level': 'Low', 'affectedAreas': <String>[],
-        'waterLevel': '—', 'advice': 'No active alerts.',
+        'level': 'Low',
+        'affectedAreas': <String>[],
+        'waterLevel': '—',
+        'advice': 'No active alerts.',
         'isActive': false,
       };
     }
 
-    final row = rows.first as Map<String, dynamic>;
+    final row = rows.first;
     return {
-      'level':         row['level'],
+      'level': row['level'],
       'affectedAreas': List<String>.from(row['affected_areas'] ?? []),
-      'waterLevel':    row['water_level'] ?? '—',
-      'advice':        row['advice'] ?? '',
-      'isActive':      row['is_active'],
-      'updateTime':    row['created_at'],
+      'waterLevel': row['water_level'] ?? '—',
+      'advice': row['advice'] ?? '',
+      'isActive': row['is_active'],
+      'updateTime': row['created_at'],
     };
   }
 }
@@ -227,18 +240,55 @@ class FloodAlertService {
 class CitizenReportService {
   Future<List<Map<String, dynamic>>> fetchReportCategories() async {
     return [
-      {'id': '1', 'name': 'Infrastructure', 'icon': '🚧',
-       'subcategories': ['Road Damage', 'Bridge Issues', 'Street Light', 'Drainage Problems']},
-      {'id': '2', 'name': 'Sanitation', 'icon': '🗑️',
-       'subcategories': ['Garbage Collection', 'Illegal Dumping', 'Public Toilets']},
-      {'id': '3', 'name': 'Public Safety', 'icon': '👮',
-       'subcategories': ['Criminal Activity', 'Traffic Violations', 'Fire Hazards']},
-      {'id': '4', 'name': 'Environment', 'icon': '🌳',
-       'subcategories': ['Tree Maintenance', 'Flooding', 'Pollution']},
-      {'id': '5', 'name': 'Utilities', 'icon': '⚡',
-       'subcategories': ['Water Supply', 'Power Outage', 'Internet Issues']},
-      {'id': '6', 'name': 'Others', 'icon': '📋',
-       'subcategories': ['General Complaint', 'Suggestion', 'Other Concerns']},
+      {
+        'id': '1',
+        'name': 'Infrastructure',
+        'icon': '🚧',
+        'subcategories': [
+          'Road Damage',
+          'Bridge Issues',
+          'Street Light',
+          'Drainage Problems'
+        ]
+      },
+      {
+        'id': '2',
+        'name': 'Sanitation',
+        'icon': '🗑️',
+        'subcategories': [
+          'Garbage Collection',
+          'Illegal Dumping',
+          'Public Toilets'
+        ]
+      },
+      {
+        'id': '3',
+        'name': 'Public Safety',
+        'icon': '👮',
+        'subcategories': [
+          'Criminal Activity',
+          'Traffic Violations',
+          'Fire Hazards'
+        ]
+      },
+      {
+        'id': '4',
+        'name': 'Environment',
+        'icon': '🌳',
+        'subcategories': ['Tree Maintenance', 'Flooding', 'Pollution']
+      },
+      {
+        'id': '5',
+        'name': 'Utilities',
+        'icon': '⚡',
+        'subcategories': ['Water Supply', 'Power Outage', 'Internet Issues']
+      },
+      {
+        'id': '6',
+        'name': 'Others',
+        'icon': '📋',
+        'subcategories': ['General Complaint', 'Suggestion', 'Other Concerns']
+      },
     ];
   }
 
@@ -325,19 +375,19 @@ class CitizenReportService {
     final row = await SupabaseService.client
         .from('citizen_reports')
         .insert({
-          'user_id':     uid,
-          'category':    category,
+          'user_id': uid,
+          'category': category,
           'subcategory': subcategory,
           'description': description,
-          'location':    location,
-          'photo_urls':  photoUrls,
-          'contact':     contactInfo,
-          'severity':                  finalPriority,
-          'ai_suggested_severity':     severity?.severity,
-          'ai_severity_confidence':    severity?.confidence,
+          'location': location,
+          'photo_urls': photoUrls,
+          'contact': contactInfo,
+          'severity': finalPriority,
+          'ai_suggested_severity': severity?.severity,
+          'ai_severity_confidence': severity?.confidence,
           'ai_detected_image_category': imageResult?.detectedCategory,
-          'ai_image_valid':            imageResult?.isValidPhoto,
-          'requires_manual_review':    requiresReview,
+          'ai_image_valid': imageResult?.isValidPhoto,
+          'requires_manual_review': requiresReview,
         })
         .select()
         .single();
@@ -358,9 +408,9 @@ class CitizenReportService {
     }
 
     return {
-      'reportId':            row['id'],
-      'status':              'received',
-      'submittedAt':         row['created_at'],
+      'reportId': row['id'],
+      'status': 'received',
+      'submittedAt': row['created_at'],
       // FIX — the caller reads `result['assignedTo']` to show which
       // department the report went to. That key never existed here, so
       // `result['assignedTo'] as String` threw a null-cast TypeError on
@@ -369,9 +419,9 @@ class CitizenReportService {
       // again." — even though the report had already been saved. Residents
       // saw a failure message every time and had no way to know the
       // report actually went through.
-      'assignedTo':          '$category Department',
+      'assignedTo': '$category Department',
       'estimatedResolution': '3-5 business days',
-      'message':             'Thank you! Your report has been received.',
+      'message': 'Thank you! Your report has been received.',
     };
   }
 
@@ -383,28 +433,28 @@ class CitizenReportService {
         .single();
 
     return {
-      'reportId':    row['id'],
-      'status':      row['status'],
+      'reportId': row['id'],
+      'status': row['status'],
       'lastUpdated': row['updated_at'],
-      'message':     _statusMessage(row['status'] as String),
+      'message': _statusMessage(row['status'] as String),
     };
   }
 
   String _statusMessage(String status) {
     const map = {
-      'received':    'Report received, awaiting assignment.',
-      'assigned':    'Assigned to a department for action.',
+      'received': 'Report received, awaiting assignment.',
+      'assigned': 'Assigned to a department for action.',
       'in_progress': 'Department is currently working on this.',
-      'resolved':    'The issue has been resolved.',
-      'closed':      'Report closed after resolution.',
+      'resolved': 'The issue has been resolved.',
+      'closed': 'Report closed after resolution.',
     };
     return map[status] ?? 'Status unknown.';
   }
 }
 
 final announcementServiceProvider = Provider((ref) => AnnouncementService(ref));
-final notificationServiceProvider  = Provider((ref) => NotificationService(ref));
-final hotlineServiceProvider       = Provider((_)   => HotlineService());
-final documentServiceProvider      = Provider((_)   => DocumentService());
-final floodAlertServiceProvider    = Provider((_)   => FloodAlertService());
-final citizenReportServiceProvider = Provider((_)   => CitizenReportService());
+final notificationServiceProvider = Provider((ref) => NotificationService(ref));
+final hotlineServiceProvider = Provider((_) => HotlineService());
+final documentServiceProvider = Provider((_) => DocumentService());
+final floodAlertServiceProvider = Provider((_) => FloodAlertService());
+final citizenReportServiceProvider = Provider((_) => CitizenReportService());

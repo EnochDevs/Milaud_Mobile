@@ -152,7 +152,10 @@ class ErrorHandler {
     required String message,
     String confirmText = 'Confirm',
     String cancelText = 'Cancel',
-    Color confirmColor = AppColors.milaorBlue,
+    // Nullable so the default can resolve at call time: AppColors.milaorBlue is
+    // a mutable palette value (the admin can restyle the app), which can't be a
+    // constant default. Falls back to the same colour as before.
+    Color? confirmColor,
   }) async {
     final result = await showDialog<bool>(
       context: context,
@@ -167,7 +170,7 @@ class ErrorHandler {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(
-              foregroundColor: confirmColor,
+              foregroundColor: confirmColor ?? AppColors.milaorBlue,
             ),
             child: Text(confirmText),
           ),

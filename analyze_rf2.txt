@@ -1,0 +1,78 @@
+﻿Analyzing rain_forecast, rain_forecast_provider.dart, rain_forecast...
+
+  error - lib\features\rain_forecast\service\weather_cache.dart:40:9 - Can't define a const constructor for a class with non-final fields. Try making all of the fields final, or removing the keyword 'const' from the constructor. - const_constructor_with_non_final_field
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:134:31 - Extension methods can't be used in constant expressions. - const_eval_extension_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:154:31 - Extension methods can't be used in constant expressions. - const_eval_extension_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:269:9 - The method '_buildRiskCard' isn't defined for the type '_RainForecastScreenState'. Try correcting the name to the name of an existing method, or defining a method named '_buildRiskCard'. - undefined_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:271:9 - The method '_buildRainfallChartCard' isn't defined for the type '_RainForecastScreenState'. Try correcting the name to the name of an existing method, or defining a method named '_buildRainfallChartCard'. - undefined_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:454:10 - Function expressions can't be named. Try removing the name, or moving the function expression to a function declaration statement. - named_function_expression
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:454:24 - The element type 'Widget Function(WeatherForecastData)' can't be assigned to the list type 'Widget'. - list_element_type_not_assignable
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:459:20 - The method '_riskAccent' isn't defined for the type '_RainForecastScreenState'. Try correcting the name to the name of an existing method, or defining a method named '_riskAccent'. - undefined_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:477:22 - The method '_riskIcon' isn't defined for the type '_RainForecastScreenState'. Try correcting the name to the name of an existing method, or defining a method named '_riskIcon'. - undefined_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:521:3 - Expected to find ','. - expected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:521:9 - Function expressions can't be named. Try removing the name, or moving the function expression to a function declaration statement. - named_function_expression
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:521:20 - The element type 'Color Function(String)' can't be assigned to the list type 'Widget'. - list_element_type_not_assignable
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:533:3 - Expected to find ','. - expected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:533:12 - Function expressions can't be named. Try removing the name, or moving the function expression to a function declaration statement. - named_function_expression
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:533:21 - The element type 'IconData Function(String)' can't be assigned to the list type 'Widget'. - list_element_type_not_assignable
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:548:3 - Expected to find ','. - expected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:548:10 - Function expressions can't be named. Try removing the name, or moving the function expression to a function declaration statement. - named_function_expression
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:548:33 - The element type 'Widget Function(WeatherForecastData)' can't be assigned to the list type 'Widget'. - list_element_type_not_assignable
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:583:11 - The method '_chartLegend' isn't defined for the type '_RainForecastScreenState'. Try correcting the name to the name of an existing method, or defining a method named '_chartLegend'. - undefined_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:589:3 - Expected to find ','. - expected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:589:10 - Function expressions can't be named. Try removing the name, or moving the function expression to a function declaration statement. - named_function_expression
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:589:22 - The element type 'Row Function()' can't be assigned to the list type 'Widget'. - list_element_type_not_assignable
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:592:9 - The method '_legendDot' isn't defined for the type '_RainForecastScreenState'. Try correcting the name to the name of an existing method, or defining a method named '_legendDot'. - undefined_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:594:9 - The method '_legendDot' isn't defined for the type '_RainForecastScreenState'. Try correcting the name to the name of an existing method, or defining a method named '_legendDot'. - undefined_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:596:9 - The method '_legendDot' isn't defined for the type '_RainForecastScreenState'. Try correcting the name to the name of an existing method, or defining a method named '_legendDot'. - undefined_method
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:601:3 - Expected to find ','. - expected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:601:10 - Function expressions can't be named. Try removing the name, or moving the function expression to a function declaration statement. - named_function_expression
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:601:20 - The element type 'Row Function(Color, String)' can't be assigned to the list type 'Widget'. - list_element_type_not_assignable
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:622:23 - Expected to find ','. - expected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:866:7 - Expected to find ';'. - expected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:866:8 - Expected an identifier. - missing_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:866:8 - Expected to find ';'. - expected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:866:8 - Unexpected text ';'. Try removing the text. - unexpected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:867:5 - Expected an identifier. - missing_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:867:5 - Unexpected text ';'. Try removing the text. - unexpected_token
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1036:15 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1036:16 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1037:13 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1037:14 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1038:9 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1038:10 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1039:7 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1039:8 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1040:5 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1040:6 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1061:22 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1113:24 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1128:16 - Undefined name '_cardBg'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1130:35 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1137:62 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1144:26 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1158:22 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1173:16 - Undefined name '_cardBg'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1175:35 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1199:22 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1218:24 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1227:22 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1241:35 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1248:24 - Undefined name '_colors'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1281:1 - Expected a method, getter, setter or operator declaration. This appears to be incomplete code. Try removing it or completing it. - expected_executable
+warning - lib\providers\rain_forecast_provider.dart:15:8 - Unused import: '../features/rain_forecast/models/weather_risk_models.dart'. Try removing the import directive. - unused_import
+warning - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:30:20 - The declaration 'heritagePurple' isn't referenced. Try removing the declaration of 'heritagePurple'. - unused_element
+warning - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:31:20 - The declaration 'riverFlow' isn't referenced. Try removing the declaration of 'riverFlow'. - unused_element
+warning - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:32:20 - The declaration 'deepAnchor' isn't referenced. Try removing the declaration of 'deepAnchor'. - unused_element
+warning - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:33:22 - The value of the field 'warmHearth' isn't used. Try removing the field, or using it. - unused_field
+warning - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:34:22 - The value of the field 'cardWhite' isn't used. Try removing the field, or using it. - unused_field
+warning - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:39:22 - The value of the field 'severe' isn't used. Try removing the field, or using it. - unused_field
+warning - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:63:13 - The declaration '_cardBg' isn't referenced. Try removing the declaration of '_cardBg'. - unused_element
+warning - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:866:8 - Dead code. Try removing the code, or fixing the code before it so that it can be reached. - dead_code
+   info - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:867:6 - Unnecessary empty statement. Try removing the empty statement or restructuring the code. - empty_statements
+   info - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1277:30 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1278:30 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1279:13 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1279:23 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+
+74 issues found.

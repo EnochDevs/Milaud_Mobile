@@ -1,15 +1,17 @@
 // lib/screens/app_features/document/document_request_screen.dart
+// ignore_for_file: unused_element
+
 import 'package:flutter/material.dart';
 import 'package:may_laud/theme/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 
 import '../../home/home.dart';
 import '../../home/nav_bar_button.dart';
 import '../../../utils/guest_guard.dart';
 import '../../../providers/content_providers.dart';
+import 'document_tracking_screen.dart';
 
 class DocumentRequestScreen extends ConsumerStatefulWidget {
   const DocumentRequestScreen({super.key});
@@ -19,31 +21,33 @@ class DocumentRequestScreen extends ConsumerStatefulWidget {
       _DocumentRequestScreenState();
 }
 
-class _DocumentRequestScreenState
-    extends ConsumerState<DocumentRequestScreen> {
+class _DocumentRequestScreenState extends ConsumerState<DocumentRequestScreen> {
   bool _isDark = false;
   ColorScheme? _cs;
 
   // ─── ADAPTIVE COLORS ──────────────────────────────────
-  Color get _scaffoldBg =>
-      _isDark ? _cs!.background : HomeColors.warmHearth;
+  Color get _scaffoldBg => _isDark ? _cs!.background : HomeColors.warmHearth;
   Color get _cardBg => _isDark ? _cs!.surface : HomeColors.cardWhite;
   Color get _cardBg70 => _cardBg.withValues(alpha: 0.7);
   Color get _cardBg60 => _cardBg.withValues(alpha: 0.6);
-  Color get _titleText =>
-      _isDark ? _cs!.onSurface : HomeColors.deepAnchor;
-  Color get _bodyText =>
-      _isDark ? _cs!.onSurface.withValues(alpha: 0.65) : AppColors.neutralGray800;
-  Color get _mutedText =>
-      _isDark ? _cs!.onSurface.withValues(alpha: 0.45) : AppColors.neutralGray500;
+  Color get _titleText => _isDark ? _cs!.onSurface : HomeColors.deepAnchor;
+  Color get _bodyText => _isDark
+      ? _cs!.onSurface.withValues(alpha: 0.65)
+      : AppColors.neutralGray800;
+  Color get _mutedText => _isDark
+      ? _cs!.onSurface.withValues(alpha: 0.45)
+      : AppColors.neutralGray500;
   Color get _inputFill =>
       _isDark ? _cs!.surface.withValues(alpha: 0.8) : HomeColors.warmHearth;
-  Color get _borderColor =>
-      _isDark ? _cs!.onSurface.withValues(alpha: 0.15) : AppColors.neutralGray200;
-  Color get _subtitleText =>
-      _isDark ? _cs!.onSurface.withValues(alpha: 0.5) : AppColors.neutralGray500;
-  Color get _dragHandle =>
-      _isDark ? AppColors.neutralWhite.withValues(alpha: 0.24) : const Color(0xFFD1D5DB);
+  Color get _borderColor => _isDark
+      ? _cs!.onSurface.withValues(alpha: 0.15)
+      : AppColors.neutralGray200;
+  Color get _subtitleText => _isDark
+      ? _cs!.onSurface.withValues(alpha: 0.5)
+      : AppColors.neutralGray500;
+  Color get _dragHandle => _isDark
+      ? AppColors.neutralWhite.withValues(alpha: 0.24)
+      : const Color(0xFFD1D5DB);
 
   // urgency backgrounds — dark mode strips the pastel tint
   Color _urgencyBg(String urgency) {
@@ -82,7 +86,10 @@ class _DocumentRequestScreenState
   String _selectedUrgency = 'Normal (3-5 days)';
   int _currentStep = 0;
 
-  final List<File> _attachedFiles = [];
+  /// Supporting documents the resident attached. Raw bytes rather than a
+  /// `dart:io File` so reading/picking works on web too — see
+  /// DocumentAttachment in content_providers.dart.
+  final List<DocumentAttachment> _attachedFiles = [];
   final ImagePicker _picker = ImagePicker();
   bool _isSubmitting = false;
 
@@ -92,8 +99,7 @@ class _DocumentRequestScreenState
       'name': 'Business Permit',
       'icon': Icons.store_rounded,
       'fee': 500.0,
-      'desc':
-          'Official permit to operate a business within the municipality',
+      'desc': 'Official permit to operate a business within the municipality',
       'color': const Color(0xFF0056A3),
       'available': true,
     },
@@ -101,8 +107,7 @@ class _DocumentRequestScreenState
       'name': 'Civil Registry Documents',
       'icon': Icons.folder_copy_rounded,
       'fee': 200.0,
-      'desc':
-          'Birth, Death, and Marriage Certificates from the civil registry',
+      'desc': 'Birth, Death, and Marriage Certificates from the civil registry',
       'color': const Color(0xFF4C229C),
       'available': true,
     },
@@ -126,8 +131,7 @@ class _DocumentRequestScreenState
       'name': 'Police Clearance',
       'icon': Icons.local_police_rounded,
       'fee': 150.0,
-      'desc':
-          'Police clearance certificate for employment or travel purposes',
+      'desc': 'Police clearance certificate for employment or travel purposes',
       'color': AppColors.warningAlt,
       'available': false,
     },
@@ -135,8 +139,7 @@ class _DocumentRequestScreenState
       'name': 'Community Tax Certificate (Cedula)',
       'icon': Icons.receipt_rounded,
       'fee': 50.0,
-      'desc':
-          'Community tax certificate required for various transactions',
+      'desc': 'Community tax certificate required for various transactions',
       'color': const Color(0xFF643EB5),
       'available': false,
     },
@@ -197,13 +200,24 @@ class _DocumentRequestScreenState
   Future<void> _pickImage() async {
     final XFile? image =
         await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (image != null) setState(() => _attachedFiles.add(File(image.path)));
+    if (image == null) return;
+    // Read the bytes up front (rather than holding a `dart:io File`) — that's
+    // what the Supabase upload needs, and it keeps the picker working on web
+    // where `File` doesn't exist.
+    final bytes = await image.readAsBytes();
+    if (!mounted) return;
+    setState(() => _attachedFiles
+        .add(DocumentAttachment(bytes: bytes, filename: image.name)));
   }
 
   Future<void> _takePhoto() async {
     final XFile? photo =
         await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
-    if (photo != null) setState(() => _attachedFiles.add(File(photo.path)));
+    if (photo == null) return;
+    final bytes = await photo.readAsBytes();
+    if (!mounted) return;
+    setState(() => _attachedFiles
+        .add(DocumentAttachment(bytes: bytes, filename: photo.name)));
   }
 
   void _showPhotoSourcePicker() {
@@ -216,8 +230,8 @@ class _DocumentRequestScreenState
 
   Widget _buildPhotoSheet(BuildContext ctx) {
     return Container(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).padding.bottom + 16.h),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(ctx).padding.bottom + 16.h),
       decoration: BoxDecoration(
         color: _cardBg,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
@@ -247,19 +261,17 @@ class _DocumentRequestScreenState
           _photoOption(ctx,
               icon: Icons.camera_alt_rounded,
               title: 'Take a Photo',
-              subtitle: 'Use your camera',
-              onTap: () {
-                Navigator.pop(ctx);
-                _takePhoto();
-              }),
+              subtitle: 'Use your camera', onTap: () {
+            Navigator.pop(ctx);
+            _takePhoto();
+          }),
           _photoOption(ctx,
               icon: Icons.photo_library_rounded,
               title: 'Choose from Gallery',
-              subtitle: 'Pick from your photos',
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickImage();
-              }),
+              subtitle: 'Pick from your photos', onTap: () {
+            Navigator.pop(ctx);
+            _pickImage();
+          }),
           SizedBox(height: 8.h),
         ],
       ),
@@ -281,8 +293,7 @@ class _DocumentRequestScreenState
           onTap: onTap,
           borderRadius: BorderRadius.circular(14.r),
           child: Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
             child: Row(
               children: [
                 Container(
@@ -292,8 +303,8 @@ class _DocumentRequestScreenState
                     color: HomeColors.heritagePurple.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(13.r),
                   ),
-                  child: Icon(icon,
-                      size: 24.sp, color: HomeColors.heritagePurple),
+                  child:
+                      Icon(icon, size: 24.sp, color: HomeColors.heritagePurple),
                 ),
                 SizedBox(width: 14.w),
                 Expanded(
@@ -308,8 +319,7 @@ class _DocumentRequestScreenState
                           )),
                       SizedBox(height: 2.h),
                       Text(subtitle,
-                          style: TextStyle(
-                              fontSize: 13.sp, color: _mutedText)),
+                          style: TextStyle(fontSize: 13.sp, color: _mutedText)),
                     ],
                   ),
                 ),
@@ -323,8 +333,7 @@ class _DocumentRequestScreenState
     );
   }
 
-  void _removeFile(int index) =>
-      setState(() => _attachedFiles.removeAt(index));
+  void _removeFile(int index) => setState(() => _attachedFiles.removeAt(index));
 
   // ─── DOCUMENT TYPE PICKER ─────────────────────────────
   void _showDocumentTypePicker() {
@@ -345,8 +354,7 @@ class _DocumentRequestScreenState
         return Container(
           decoration: BoxDecoration(
             color: _cardBg,
-            borderRadius:
-                BorderRadius.vertical(top: Radius.circular(28.r)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28.r)),
           ),
           child: Column(
             children: [
@@ -368,13 +376,12 @@ class _DocumentRequestScreenState
                       width: 40.w,
                       height: 40.w,
                       decoration: BoxDecoration(
-                        color: HomeColors.heritagePurple
-                            .withValues(alpha: 0.08),
+                        color:
+                            HomeColors.heritagePurple.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(11.r),
                       ),
                       child: Icon(Icons.description_rounded,
-                          size: 22.sp,
-                          color: HomeColors.heritagePurple),
+                          size: 22.sp, color: HomeColors.heritagePurple),
                     ),
                     SizedBox(width: 12.w),
                     Text(
@@ -397,8 +404,7 @@ class _DocumentRequestScreenState
                   separatorBuilder: (_, __) => SizedBox(height: 8.h),
                   itemBuilder: (_, index) {
                     final doc = _documentTypes[index];
-                    final isSelected =
-                        _selectedDocumentType == doc['name'];
+                    final isSelected = _selectedDocumentType == doc['name'];
                     return _docTypeTile(ctx, doc, isSelected);
                   },
                 ),
@@ -430,7 +436,9 @@ class _DocumentRequestScreenState
         ? accent
         : available
             ? _borderColor
-            : (_isDark ? _cs!.onSurface.withValues(alpha: 0.1) : const Color(0xFFE0E0E0));
+            : (_isDark
+                ? _cs!.onSurface.withValues(alpha: 0.1)
+                : const Color(0xFFE0E0E0));
 
     final iconBg = isSelected
         ? accent.withValues(alpha: 0.12)
@@ -447,8 +455,7 @@ class _DocumentRequestScreenState
       child: InkWell(
         onTap: available
             ? () {
-                setState(
-                    () => _selectedDocumentType = doc['name'] as String);
+                setState(() => _selectedDocumentType = doc['name'] as String);
                 Navigator.pop(ctx);
               }
             : null,
@@ -459,8 +466,7 @@ class _DocumentRequestScreenState
           decoration: BoxDecoration(
             color: tileBg,
             borderRadius: BorderRadius.circular(16.r),
-            border: Border.all(
-                color: tileBorder, width: isSelected ? 1.5 : 1),
+            border: Border.all(color: tileBorder, width: isSelected ? 1.5 : 1),
           ),
           child: Row(
             children: [
@@ -472,9 +478,7 @@ class _DocumentRequestScreenState
                   borderRadius: BorderRadius.circular(14.r),
                 ),
                 child: Icon(
-                  available
-                      ? (doc['icon'] as IconData)
-                      : Icons.lock_rounded,
+                  available ? (doc['icon'] as IconData) : Icons.lock_rounded,
                   size: 26.sp,
                   color: isSelected
                       ? accent
@@ -515,7 +519,8 @@ class _DocumentRequestScreenState
                               borderRadius: BorderRadius.circular(6.r),
                               border: Border.all(
                                   color: _isDark
-                                      ? AppColors.errorDark.withValues(alpha: 0.3)
+                                      ? AppColors.errorDark
+                                          .withValues(alpha: 0.3)
                                       : AppColors.error.withValues(alpha: 0.3)),
                             ),
                             child: Text(
@@ -531,14 +536,10 @@ class _DocumentRequestScreenState
                     ),
                     SizedBox(height: 3.h),
                     Text(
-                      available
-                          ? (doc['desc'] as String)
-                          : 'Not Available',
+                      available ? (doc['desc'] as String) : 'Not Available',
                       style: TextStyle(
                         fontSize: 12.sp,
-                        color: available
-                            ? _mutedText
-                            : AppColors.errorDark,
+                        color: available ? _mutedText : AppColors.errorDark,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -555,16 +556,13 @@ class _DocumentRequestScreenState
                   fontSize: 15.sp,
                   fontWeight: FontWeight.w700,
                   color: available
-                      ? (fee == 0
-                          ? AppColors.successAlt
-                          : accent)
+                      ? (fee == 0 ? AppColors.successAlt : accent)
                       : _mutedText,
                 ),
               ),
               if (isSelected) ...[
                 SizedBox(width: 8.w),
-                Icon(Icons.check_circle_rounded,
-                    size: 22.sp, color: accent),
+                Icon(Icons.check_circle_rounded, size: 22.sp, color: accent),
               ],
             ],
           ),
@@ -585,8 +583,8 @@ class _DocumentRequestScreenState
         content: const Text('This document type is not available.'),
         backgroundColor: AppColors.errorDark,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10.r)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
       ));
       return;
     }
@@ -594,10 +592,19 @@ class _DocumentRequestScreenState
     // Persist the request so it shows up in the user's real
     // Total/Approved/Pending stats on the Profile screen instead of
     // being a purely cosmetic success dialog.
+    //
+    // Every field collected on this screen is sent — Full Name, Address,
+    // Additional Notes, the urgency level and the attached documents — so the
+    // web admin sees the exact request the resident filed (see
+    // supabase/document_requests_full_details.sql).
     await ref.read(documentRequestsProvider.notifier).submitRequest(
           documentType: _selectedDocumentType,
           purpose: _purposeController.text.trim(),
           urgency: _selectedUrgency,
+          fullName: _fullNameController.text.trim(),
+          address: _addressController.text.trim(),
+          additionalNotes: _additionalNotesController.text.trim(),
+          attachments: List<DocumentAttachment>.from(_attachedFiles),
           fee: '₱${(_selectedDocMeta['fee'] as double).toStringAsFixed(2)}',
         );
     if (!mounted) return;
@@ -618,15 +625,17 @@ class _DocumentRequestScreenState
 
   Widget _buildSuccessDialog(
       BuildContext ctx, String refId, String urgencyLabel) {
-    final tipBg =
-        _isDark ? const Color(0xFF3A2A00) : AppColors.warningAlt.withValues(alpha: 0.08);
-    final tipBorder =
-        _isDark ? const Color(0xFF7A5800) : AppColors.warningAlt.withValues(alpha: 0.4);
-    final tipText =
-        _isDark ? AppColors.warningAlt : AppColors.warningAlt;
+    final tipBg = _isDark
+        ? const Color(0xFF3A2A00)
+        : AppColors.warningAlt.withValues(alpha: 0.08);
+    final tipBorder = _isDark
+        ? const Color(0xFF7A5800)
+        : AppColors.warningAlt.withValues(alpha: 0.4);
+    final tipText = _isDark ? AppColors.warningAlt : AppColors.warningAlt;
     final refBg = _isDark ? _cs!.background : _scaffoldBg;
-    final refBorder =
-        _isDark ? _cs!.onSurface.withValues(alpha: 0.12) : AppColors.heritagePurple.withValues(alpha: 0.12);
+    final refBorder = _isDark
+        ? _cs!.onSurface.withValues(alpha: 0.12)
+        : AppColors.heritagePurple.withValues(alpha: 0.12);
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -672,8 +681,7 @@ class _DocumentRequestScreenState
                       ),
                     ],
                   ),
-                  child: Icon(Icons.check_rounded,
-                      size: 38.sp, color: _cardBg),
+                  child: Icon(Icons.check_rounded, size: 38.sp, color: _cardBg),
                 ),
               ),
             ),
@@ -691,8 +699,7 @@ class _DocumentRequestScreenState
             Text(
               'Your document request has been sent to the Barangay office for processing.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 14.sp, color: _mutedText, height: 1.5),
+              style: TextStyle(fontSize: 14.sp, color: _mutedText, height: 1.5),
             ),
             SizedBox(height: 20.h),
             Container(
@@ -728,8 +735,8 @@ class _DocumentRequestScreenState
               ),
             ),
             SizedBox(height: 20.h),
-            _successDetailRow(Icons.description_outlined, 'Document',
-                _selectedDocumentType),
+            _successDetailRow(
+                Icons.description_outlined, 'Document', _selectedDocumentType),
             SizedBox(height: 10.h),
             _successDetailRow(Icons.schedule_outlined, 'Processing',
                 '$urgencyLabel Processing'),
@@ -755,7 +762,7 @@ class _DocumentRequestScreenState
                   SizedBox(width: 10.w),
                   Expanded(
                     child: Text(
-                      'Save your reference number. You can track your request status in the Profile section.',
+                      'Follow this request live on the tracking screen — status updates appear automatically.',
                       style: TextStyle(
                           fontSize: 13.sp, color: tipText, height: 1.4),
                     ),
@@ -764,6 +771,33 @@ class _DocumentRequestScreenState
               ),
             ),
             SizedBox(height: 22.h),
+            SizedBox(
+              width: double.infinity,
+              height: 52.h,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _resetForm();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const DocumentTrackingScreen()),
+                  );
+                },
+                icon: Icon(Icons.track_changes_rounded, size: 18.sp),
+                label: Text('Track My Request',
+                    style: TextStyle(
+                        fontSize: 15.sp, fontWeight: FontWeight.w700)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: HomeColors.heritagePurple,
+                  side: BorderSide(
+                      color: HomeColors.heritagePurple.withValues(alpha: 0.4)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14.r)),
+                ),
+              ),
+            ),
+            SizedBox(height: 12.h),
             SizedBox(
               width: double.infinity,
               height: 52.h,
@@ -782,8 +816,7 @@ class _DocumentRequestScreenState
                 ),
                 child: Text('Done',
                     style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.w700)),
+                        fontSize: 16.sp, fontWeight: FontWeight.w700)),
               ),
             ),
           ],
@@ -792,16 +825,14 @@ class _DocumentRequestScreenState
     );
   }
 
-  Widget _successDetailRow(
-      IconData icon, String label, String value) {
+  Widget _successDetailRow(IconData icon, String label, String value) {
     return Row(
       children: [
         Icon(icon,
             size: 16.sp,
             color: HomeColors.heritagePurple.withValues(alpha: 0.7)),
         SizedBox(width: 10.w),
-        Text(label,
-            style: TextStyle(fontSize: 13.sp, color: _mutedText)),
+        Text(label, style: TextStyle(fontSize: 13.sp, color: _mutedText)),
         const Spacer(),
         Text(value,
             style: TextStyle(
@@ -907,7 +938,7 @@ class _DocumentRequestScreenState
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: EdgeInsets.zero,
         background: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [HomeColors.deepAnchor, HomeColors.heritagePurple],
               begin: Alignment.topLeft,
@@ -953,7 +984,8 @@ class _DocumentRequestScreenState
                               style: TextStyle(
                                 fontSize: 14.sp,
                                 fontWeight: FontWeight.w500,
-                                color: AppColors.neutralWhite.withValues(alpha: 0.7),
+                                color: AppColors.neutralWhite
+                                    .withValues(alpha: 0.7),
                               ),
                             ),
                           ],
@@ -1001,8 +1033,9 @@ class _DocumentRequestScreenState
   Widget _stepDot(int step, String label) {
     final isActive = _currentStep >= step;
     final isPast = _currentStep > step;
-    final inactiveCircle =
-        _isDark ? _cs!.onSurface.withValues(alpha: 0.15) : AppColors.neutralGray200;
+    final inactiveCircle = _isDark
+        ? _cs!.onSurface.withValues(alpha: 0.15)
+        : AppColors.neutralGray200;
 
     return Expanded(
       child: Column(
@@ -1017,8 +1050,7 @@ class _DocumentRequestScreenState
               boxShadow: isActive
                   ? [
                       BoxShadow(
-                        color: HomeColors.heritagePurple
-                            .withValues(alpha: 0.3),
+                        color: HomeColors.heritagePurple.withValues(alpha: 0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       )
@@ -1045,8 +1077,7 @@ class _DocumentRequestScreenState
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 10.sp,
-              fontWeight:
-                  isActive ? FontWeight.w600 : FontWeight.w400,
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
               color: isActive ? _titleText : _mutedText,
               height: 1.3,
             ),
@@ -1058,8 +1089,9 @@ class _DocumentRequestScreenState
 
   Widget _stepLine(int fromStep) {
     final isPast = _currentStep > fromStep;
-    final inactiveLine =
-        _isDark ? _cs!.onSurface.withValues(alpha: 0.12) : AppColors.neutralGray200;
+    final inactiveLine = _isDark
+        ? _cs!.onSurface.withValues(alpha: 0.12)
+        : AppColors.neutralGray200;
     return Expanded(
       child: Padding(
         padding: EdgeInsets.only(bottom: 24.h),
@@ -1090,8 +1122,7 @@ class _DocumentRequestScreenState
           _sectionLabel('Document Type'),
           SizedBox(height: 2.h),
           Text('Tap to select the document you need',
-              style: TextStyle(
-                  fontSize: 13.sp, color: _subtitleText)),
+              style: TextStyle(fontSize: 13.sp, color: _subtitleText)),
           SizedBox(height: 14.h),
           Material(
             color: Colors.transparent,
@@ -1143,14 +1174,15 @@ class _DocumentRequestScreenState
                                     color: _isDark
                                         ? AppColors.errorDark
                                             .withValues(alpha: 0.15)
-                                        : AppColors.error.withValues(alpha: 0.05),
-                                    borderRadius:
-                                        BorderRadius.circular(6.r),
+                                        : AppColors.error
+                                            .withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(6.r),
                                     border: Border.all(
                                         color: _isDark
                                             ? AppColors.errorDark
                                                 .withValues(alpha: 0.3)
-                                            : AppColors.error.withValues(alpha: 0.3)),
+                                            : AppColors.error
+                                                .withValues(alpha: 0.3)),
                                   ),
                                   child: Text(
                                     'Unavailable',
@@ -1166,8 +1198,8 @@ class _DocumentRequestScreenState
                           SizedBox(height: 3.h),
                           Text(
                             doc['desc'] as String,
-                            style: TextStyle(
-                                fontSize: 13.sp, color: _mutedText),
+                            style:
+                                TextStyle(fontSize: 13.sp, color: _mutedText),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1238,9 +1270,7 @@ class _DocumentRequestScreenState
                   ? Icons.verified_user_rounded
                   : Icons.receipt_long_rounded,
               size: 26.sp,
-              color: _isFree
-                  ? AppColors.successAlt
-                  : HomeColors.heritagePurple,
+              color: _isFree ? AppColors.successAlt : HomeColors.heritagePurple,
             ),
           ),
           SizedBox(width: 16.w),
@@ -1279,9 +1309,8 @@ class _DocumentRequestScreenState
               style: TextStyle(
                 fontSize: 24.sp,
                 fontWeight: FontWeight.w700,
-                color: _isFree
-                    ? AppColors.successAlt
-                    : HomeColors.heritagePurple,
+                color:
+                    _isFree ? AppColors.successAlt : HomeColors.heritagePurple,
               ),
             ),
           ),
@@ -1303,8 +1332,7 @@ class _DocumentRequestScreenState
             _sectionLabel('Personal Information'),
             SizedBox(height: 2.h),
             Text('Provide accurate details for verification',
-                style: TextStyle(
-                    fontSize: 13.sp, color: _subtitleText)),
+                style: TextStyle(fontSize: 13.sp, color: _subtitleText)),
             SizedBox(height: 16.h),
             TextFormField(
               controller: _fullNameController,
@@ -1312,8 +1340,7 @@ class _DocumentRequestScreenState
                   fontSize: 15.sp,
                   fontWeight: FontWeight.w500,
                   color: _titleText),
-              decoration:
-                  _fieldDecoration('Full Name', Icons.person_rounded),
+              decoration: _fieldDecoration('Full Name', Icons.person_rounded),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
                   return 'Please enter your full name';
@@ -1354,12 +1381,10 @@ class _DocumentRequestScreenState
           _sectionLabel('Processing Urgency'),
           SizedBox(height: 2.h),
           Text('Faster processing may include additional fees',
-              style: TextStyle(
-                  fontSize: 13.sp, color: _subtitleText)),
+              style: TextStyle(fontSize: 13.sp, color: _subtitleText)),
           SizedBox(height: 16.h),
           ..._urgencyLevels.map((urgency) {
-            final urgencyLabel =
-                '${urgency['label']} (${urgency['desc']})';
+            final urgencyLabel = '${urgency['label']} (${urgency['desc']})';
             final isSelected = _selectedUrgency == urgencyLabel;
             final color = _urgencyColor(urgency['label']!);
             final bg = _urgencyBg(urgency['label']!);
@@ -1373,13 +1398,12 @@ class _DocumentRequestScreenState
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () =>
-                      setState(() => _selectedUrgency = urgencyLabel),
+                  onTap: () => setState(() => _selectedUrgency = urgencyLabel),
                   borderRadius: BorderRadius.circular(14.r),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 16.w, vertical: 14.h),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
                     decoration: BoxDecoration(
                       color: isSelected ? bg : Colors.transparent,
                       borderRadius: BorderRadius.circular(14.r),
@@ -1414,9 +1438,7 @@ class _DocumentRequestScreenState
                                 style: TextStyle(
                                   fontSize: 15.sp,
                                   fontWeight: FontWeight.w600,
-                                  color: isSelected
-                                      ? _titleText
-                                      : _bodyText,
+                                  color: isSelected ? _titleText : _bodyText,
                                 ),
                               ),
                               SizedBox(height: 2.h),
@@ -1457,8 +1479,8 @@ class _DocumentRequestScreenState
               _sectionLabel('Attachments'),
               if (_attachedFiles.isNotEmpty)
                 Container(
-                  padding: EdgeInsets.symmetric(
-                      horizontal: 10.w, vertical: 4.h),
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
                   decoration: BoxDecoration(
                     color: HomeColors.heritagePurple.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(20.r),
@@ -1477,8 +1499,8 @@ class _DocumentRequestScreenState
           SizedBox(height: 2.h),
           Text(
             'Upload supporting documents like valid ID, proof of address (optional)',
-            style: TextStyle(
-                fontSize: 13.sp, color: _subtitleText, height: 1.4),
+            style:
+                TextStyle(fontSize: 13.sp, color: _subtitleText, height: 1.4),
           ),
           SizedBox(height: 16.h),
           if (_attachedFiles.isNotEmpty)
@@ -1542,8 +1564,7 @@ class _DocumentRequestScreenState
                   )),
               SizedBox(height: 4.h),
               Text('Valid ID, proof of address, or other documents',
-                  style: TextStyle(
-                      fontSize: 13.sp, color: _mutedText)),
+                  style: TextStyle(fontSize: 13.sp, color: _mutedText)),
             ],
           ),
         ),
@@ -1575,15 +1596,9 @@ class _DocumentRequestScreenState
     );
   }
 
-  Widget _buildFileThumb({required File file, required int index}) {
-    final fileName = file.path.split('/').last;
-    String fileSize;
-    try {
-      final bytes = file.lengthSync();
-      fileSize = '${(bytes / 1024).toStringAsFixed(1)} KB';
-    } catch (_) {
-      fileSize = 'Unknown size';
-    }
+  Widget _buildFileThumb({required DocumentAttachment file, required int index}) {
+    final fileName = file.filename;
+    final fileSize = '${(file.bytes.length / 1024).toStringAsFixed(1)} KB';
 
     return Stack(
       children: [
@@ -1622,8 +1637,7 @@ class _DocumentRequestScreenState
                   overflow: TextOverflow.ellipsis),
               SizedBox(height: 2.h),
               Text(fileSize,
-                  style:
-                      TextStyle(fontSize: 9.sp, color: _mutedText)),
+                  style: TextStyle(fontSize: 9.sp, color: _mutedText)),
             ],
           ),
         ),
@@ -1661,8 +1675,7 @@ class _DocumentRequestScreenState
           _sectionLabel('Additional Notes'),
           SizedBox(height: 2.h),
           Text('Any special instructions or details (optional)',
-              style: TextStyle(
-                  fontSize: 13.sp, color: _subtitleText)),
+              style: TextStyle(fontSize: 13.sp, color: _subtitleText)),
           SizedBox(height: 16.h),
           TextFormField(
             controller: _additionalNotesController,
@@ -1694,11 +1707,12 @@ class _DocumentRequestScreenState
           foregroundColor: AppColors.neutralWhite,
           disabledBackgroundColor:
               HomeColors.heritagePurple.withValues(alpha: 0.5),
-          disabledForegroundColor: AppColors.neutralWhite.withValues(alpha: 0.7),
+          disabledForegroundColor:
+              AppColors.neutralWhite.withValues(alpha: 0.7),
           elevation: 0,
           shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16.r)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
         ),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 200),
@@ -1818,8 +1832,7 @@ class _DocumentRequestScreenState
             size: 20.sp,
             color: HomeColors.heritagePurple.withValues(alpha: 0.55)),
       ),
-      prefixIconConstraints:
-          const BoxConstraints(minWidth: 0, minHeight: 0),
+      prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
       filled: true,
       fillColor: _inputFill,
       border: OutlineInputBorder(
@@ -1832,23 +1845,19 @@ class _DocumentRequestScreenState
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14.r),
-        borderSide: const BorderSide(
-            color: HomeColors.heritagePurple, width: 1.5),
+        borderSide:
+            BorderSide(color: HomeColors.heritagePurple, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14.r),
-        borderSide:
-            const BorderSide(color: AppColors.errorDark, width: 1),
+        borderSide: const BorderSide(color: AppColors.errorDark, width: 1),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14.r),
-        borderSide:
-            const BorderSide(color: AppColors.errorDark, width: 1.5),
+        borderSide: const BorderSide(color: AppColors.errorDark, width: 1.5),
       ),
-      contentPadding:
-          EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
-      errorStyle:
-          TextStyle(fontSize: 12.sp, color: AppColors.errorDark),
+      contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+      errorStyle: TextStyle(fontSize: 12.sp, color: AppColors.errorDark),
     );
   }
 

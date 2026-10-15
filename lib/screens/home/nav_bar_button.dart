@@ -9,6 +9,8 @@ import '../app_features/report/citizen_report_screen.dart';
 import '../app_features/flood_alert/flood_alert_screen.dart';
 import '../app_features/emergency/hotlines_screen.dart';
 import '../app_features/document/document_request_screen.dart';
+import '../app_features/document/document_tracking_screen.dart';
+import '../app_features/report/report_history_screen.dart';
 import '../notifications_screen.dart';
 import '../profile_screen.dart';
 
@@ -39,6 +41,8 @@ class _MainAppState extends ConsumerState<MainApp> {
     _QuickService(Icons.warning_rounded,         'Flood Alert',      'Disaster alerts & updates',    FloodAlertScreen()),
     _QuickService(Icons.phone_rounded,           'Milaor Hotlines',  'Emergency contacts',           HotlinesScreen()),
     _QuickService(Icons.description_rounded,     'Document Request', 'Barangay clearance, permits',  DocumentRequestScreen()),
+    _QuickService(Icons.track_changes_rounded,   'My Requests',      'Track requests in real time',  DocumentTrackingScreen()),
+    _QuickService(Icons.history_rounded,         'My Reports',       'Track reports in real time',   ReportHistoryScreen()),
   ];
 
   void _onItemTapped(int i) => ref.read(bottomNavProvider.notifier).state = i;
@@ -58,7 +62,7 @@ class _MainAppState extends ConsumerState<MainApp> {
         width: 72.w, height: 72.w,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: const LinearGradient(colors: [AppColors.riverFlow, AppColors.heritagePurple]),
+          gradient: LinearGradient(colors: [AppColors.riverFlow, AppColors.heritagePurple]),
           boxShadow: [BoxShadow(color: AppColors.heritagePurple.withValues(alpha: .35), blurRadius: 18, offset: const Offset(0, 10))],
         ),
         child: FloatingActionButton(

@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: unused_field, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -13,8 +13,7 @@ import '../../../services/ai_triage_service.dart';
 import '../../../features/rain_forecast/repository/weather_repository.dart';
 import '../../../features/rain_forecast/models/weather_data_models.dart';
 import '../../../features/rain_forecast/types.dart';
-import '../../../features/rain_forecast/risk/weather_risk_rules.dart';
-import '../../../features/rain_forecast/risk/rain_risk_classifier.dart';
+import '../rain_forecast/rain_forecast_screen.dart';
 
 // ─── BRAND PALETTE — delegates to AppColors (single source of truth) ───
 class FloodColors {
@@ -35,10 +34,10 @@ class FloodColors {
   static const Color severeBg = Color(0xFFFEE2E2);
 
   static LinearGradient get headerGradient => LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [heritagePurple, deepAnchor],
-  );
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [heritagePurple, deepAnchor],
+      );
 
   static const LinearGradient safeGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -214,7 +213,7 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
       body: SmartRefresher(
         controller: _refreshController,
         onRefresh: _onRefresh,
-        header: const WaterDropMaterialHeader(
+        header: WaterDropMaterialHeader(
           backgroundColor: FloodColors.heritagePurple,
           color: AppColors.neutralWhite,
         ),
@@ -601,6 +600,116 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
           color: const Color(0xFF0EA5E9),
         )),
       ],
+    );
+  }
+
+  Widget _buildRainForecastSection() {
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const RainForecastScreen()),
+      ),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFFE9E1F5),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.cloudy_snowing,
+                  color: Color(0xFF643EB5),
+                  size: 26,
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Rain Forecast',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF24005B),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1EBFC),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Forecast',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF643EB5),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Monitor rainfall conditions to help you prepare for possible flooding.',
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.5,
+                color: Color(0xFF6B6575),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7F3FD),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Color(0xFF643EB5),
+                    size: 22,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Live rainfall data is not connected yet. '
+                      'Please monitor official PAGASA weather advisories.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.5,
+                        color: Color(0xFF4C229C),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1154,7 +1263,8 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
           padding: EdgeInsets.symmetric(vertical: 18.h),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18.r),
-            border: Border.all(color: AppColors.neutralWhite.withValues(alpha: 0.2)),
+            border: Border.all(
+                color: AppColors.neutralWhite.withValues(alpha: 0.2)),
           ),
           child: Column(
             children: [

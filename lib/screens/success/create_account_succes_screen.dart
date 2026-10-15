@@ -1,3 +1,5 @@
+// ignore_for_file: unused_local_variable
+
 import 'package:may_laud/theme/app_theme.dart';
 // lib/screens/success/create_account_succes_screen.dart
 import 'package:flutter/material.dart';
@@ -13,15 +15,21 @@ class VerifiedSuccessScreen extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final cs = theme.colorScheme;
 
-    final scaffoldBg    = AppColors.of(context).surface;
-    final bubbleBg1     = AppColors.of(context).accentPurple.withOpacity(0.12);
-    final bubble2Colors = [AppColors.of(context).accentPurple.withOpacity(0.10), Colors.transparent];
-    final bubble3Colors = [AppColors.of(context).accentPurple.withOpacity(0.12), Colors.transparent];
-    final titleColor    = AppColors.of(context).textPrimary;
+    final scaffoldBg = AppColors.of(context).surface;
+    final bubbleBg1 = AppColors.of(context).accentPurple.withOpacity(0.12);
+    final bubble2Colors = [
+      AppColors.of(context).accentPurple.withOpacity(0.10),
+      Colors.transparent
+    ];
+    final bubble3Colors = [
+      AppColors.of(context).accentPurple.withOpacity(0.12),
+      Colors.transparent
+    ];
+    final titleColor = AppColors.of(context).textPrimary;
     final subtitleColor = AppColors.of(context).textMuted;
-    final accentPurple  = AppColors.of(context).accentPurple;
-    final iconBg        = AppColors.of(context).formSurface;
-    final footerColor   = AppColors.of(context).textMuted;
+    final accentPurple = AppColors.of(context).accentPurple;
+    final iconBg = AppColors.of(context).formSurface;
+    final footerColor = AppColors.of(context).textMuted;
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -29,16 +37,21 @@ class VerifiedSuccessScreen extends StatelessWidget {
         children: [
           // Background bubbles — same as sign-in
           Positioned(
-            top: -120.h, left: -120.w,
+            top: -120.h,
+            left: -120.w,
             child: Container(
-              width: 280.w, height: 280.w,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: bubbleBg1),
+              width: 280.w,
+              height: 280.w,
+              decoration:
+                  BoxDecoration(shape: BoxShape.circle, color: bubbleBg1),
             ),
           ),
           Positioned(
-            top: 100.h, right: -60.w,
+            top: 100.h,
+            right: -60.w,
             child: Container(
-              width: 160.w, height: 160.w,
+              width: 160.w,
+              height: 160.w,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(colors: bubble2Colors),
@@ -46,9 +59,11 @@ class VerifiedSuccessScreen extends StatelessWidget {
             ),
           ),
           Positioned(
-            bottom: 180.h, right: -80.w,
+            bottom: 180.h,
+            right: -80.w,
             child: Container(
-              width: 180.w, height: 180.w,
+              width: 180.w,
+              height: 180.w,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(colors: bubble3Colors),
@@ -58,8 +73,10 @@ class VerifiedSuccessScreen extends StatelessWidget {
           Align(
             alignment: Alignment.bottomCenter,
             child: SizedBox(
-              height: 240.h, width: double.infinity,
-              child: CustomPaint(painter: _SuccessWavePainter(
+              height: 240.h,
+              width: double.infinity,
+              child: CustomPaint(
+                  painter: _SuccessWavePainter(
                 AppColors.of(context).formSurface,
                 AppColors.of(context).accentPurple.withOpacity(0.25),
               )),
@@ -79,14 +96,16 @@ class VerifiedSuccessScreen extends StatelessWidget {
                     alignment: Alignment.center,
                     children: [
                       Container(
-                        width: 140.w, height: 140.w,
+                        width: 140.w,
+                        height: 140.w,
                         decoration: BoxDecoration(
                           color: iconBg,
                           borderRadius: BorderRadius.circular(40.r),
                         ),
                       ),
                       Container(
-                        width: 90.w, height: 90.w,
+                        width: 90.w,
+                        height: 90.w,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [accentPurple, AppColors.riverFlow],
@@ -100,17 +119,21 @@ class VerifiedSuccessScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        child: Icon(Icons.check_rounded, color: AppColors.neutralWhite, size: 44.sp),
+                        child: Icon(Icons.check_rounded,
+                            color: AppColors.neutralWhite, size: 44.sp),
                       ),
                       Positioned(
-                        right: 0, top: 0,
+                        right: 0,
+                        top: 0,
                         child: Container(
-                          width: 45.w, height: 45.w,
+                          width: 45.w,
+                          height: 45.w,
                           decoration: BoxDecoration(
                             color: AppColors.riverFlow,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.graphic_eq, color: AppColors.neutralWhite, size: 20.sp),
+                          child: Icon(Icons.graphic_eq,
+                              color: AppColors.neutralWhite, size: 20.sp),
                         ),
                       ),
                     ],
@@ -210,7 +233,8 @@ class VerifiedSuccessScreen extends StatelessWidget {
                     ),
                     child: Center(
                       child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 20.w, vertical: 10.h),
                         decoration: BoxDecoration(
                           color: AppColors.of(context).surface.withOpacity(0.8),
                           borderRadius: BorderRadius.circular(30.r),
@@ -255,9 +279,13 @@ class _SuccessWavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-
-    final fillWave = Paint()..color = fillColor..style = PaintingStyle.fill;
-    final lineWave = Paint()..color = strokeColor..style = PaintingStyle.stroke..strokeWidth = 2;
+    final fillWave = Paint()
+      ..color = fillColor
+      ..style = PaintingStyle.fill;
+    final lineWave = Paint()
+      ..color = strokeColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
 
     final path1 = Path()
       ..moveTo(0, 70)

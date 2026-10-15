@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:may_laud/theme/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import '../../home/home.dart';
 import '../../../providers/content_providers.dart';
 
 class AnnouncementsListScreen extends ConsumerStatefulWidget {
@@ -15,7 +14,6 @@ class AnnouncementsListScreen extends ConsumerStatefulWidget {
 
 class _AnnouncementsListScreenState
     extends ConsumerState<AnnouncementsListScreen> {
-
   final List<String> _categories = [
     'All',
     'Public Notice',
@@ -90,7 +88,8 @@ class _AnnouncementsListScreenState
               padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
               child: Row(
                 children: [
-                  Icon(Icons.campaign, size: 30.sp, color: AppColors.heritagePurple),
+                  Icon(Icons.campaign,
+                      size: 30.sp, color: AppColors.heritagePurple),
                   SizedBox(width: 12.w),
                   Expanded(
                     child: Text(
@@ -106,7 +105,8 @@ class _AnnouncementsListScreenState
                     onPressed: () => ref
                         .read(announcementsProvider.notifier)
                         .fetchAnnouncements(),
-                    icon: Icon(Icons.refresh, size: 26.sp, color: AppColors.heritagePurple),
+                    icon: Icon(Icons.refresh,
+                        size: 26.sp, color: AppColors.heritagePurple),
                     tooltip: 'Refresh',
                   ),
                 ],
@@ -137,8 +137,7 @@ class _AnnouncementsListScreenState
               height: 60.h,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
-                padding:
-                    EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
                 itemCount: _categories.length,
                 itemBuilder: (_, i) {
                   final cat = _categories[i];
@@ -171,11 +170,13 @@ class _AnnouncementsListScreenState
                   FilterChip(
                     label: const Text('Important Only'),
                     selected: _showImportantOnly,
-                    onSelected: (_) =>
-                        setState(() => _showImportantOnly = !_showImportantOnly),
+                    onSelected: (_) => setState(
+                        () => _showImportantOnly = !_showImportantOnly),
                     avatar: Icon(Icons.priority_high,
                         size: 18.sp,
-                        color: _showImportantOnly ? Colors.white : AppColors.errorAlt),
+                        color: _showImportantOnly
+                            ? Colors.white
+                            : AppColors.errorAlt),
                     selectedColor: AppColors.errorAlt,
                     backgroundColor: isDark ? cs.surface : null,
                     labelStyle: TextStyle(
@@ -188,9 +189,7 @@ class _AnnouncementsListScreenState
                   SizedBox(width: 12.w),
                   Text(
                     '${filtered.length} announcement${filtered.length == 1 ? '' : 's'}',
-                    style: TextStyle(
-                        fontSize: 14.sp,
-                        color: colors.textMuted),
+                    style: TextStyle(fontSize: 14.sp, color: colors.textMuted),
                   ),
                 ],
               ),
@@ -218,14 +217,12 @@ class _AnnouncementsListScreenState
                               children: [
                                 Icon(Icons.campaign_outlined,
                                     size: 56.sp,
-                                    color:
-                                        accentPurple.withValues(alpha: 0.3)),
+                                    color: accentPurple.withValues(alpha: 0.3)),
                                 SizedBox(height: 16.h),
                                 Text(
                                   'No announcements yet',
                                   style: TextStyle(
-                                      fontSize: 16.sp,
-                                      color: colors.textMuted),
+                                      fontSize: 16.sp, color: colors.textMuted),
                                 ),
                               ],
                             ),
@@ -241,8 +238,7 @@ class _AnnouncementsListScreenState
                                 child: Text(
                                   'No results for your filters.',
                                   style: TextStyle(
-                                      fontSize: 14.sp,
-                                      color: colors.textMuted),
+                                      fontSize: 14.sp, color: colors.textMuted),
                                 ),
                               ),
                             ],
@@ -262,7 +258,8 @@ class _AnnouncementsListScreenState
     );
   }
 
-  Widget _buildCard(Announcement a, bool isDark, ColorScheme cs, AppColorScheme colors) {
+  Widget _buildCard(
+      Announcement a, bool isDark, ColorScheme cs, AppColorScheme colors) {
     final accentPurple = colors.accentPurple;
     final categoryBg = colors.formSurface;
     final titleColor = colors.textPrimary;
@@ -272,8 +269,7 @@ class _AnnouncementsListScreenState
       margin: EdgeInsets.only(bottom: 16.h),
       elevation: 2,
       color: isDark ? cs.surface : null,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16.r)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
       child: InkWell(
         onTap: () => _viewDetails(a),
         borderRadius: BorderRadius.circular(16.r),
@@ -283,8 +279,7 @@ class _AnnouncementsListScreenState
             // Image
             ClipRRect(
               borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16)),
+                  topLeft: Radius.circular(16), topRight: Radius.circular(16)),
               child: Stack(
                 children: [
                   a.imageUrl != null && a.imageUrl!.isNotEmpty
@@ -355,8 +350,7 @@ class _AnnouncementsListScreenState
                           width: 10.w,
                           height: 10.h,
                           decoration: const BoxDecoration(
-                              color: AppColors.infoAlt,
-                              shape: BoxShape.circle),
+                              color: AppColors.infoAlt, shape: BoxShape.circle),
                         ),
                     ],
                   ),
@@ -492,8 +486,8 @@ class AnnouncementDetailScreen extends StatelessWidget {
                   if (announcement.isImportant)
                     Container(
                       margin: EdgeInsets.only(bottom: 12.h),
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 12.w, vertical: 6.h),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                       decoration: BoxDecoration(
                         color: AppColors.errorAlt,
                         borderRadius: BorderRadius.circular(20.r),
@@ -513,8 +507,8 @@ class AnnouncementDetailScreen extends StatelessWidget {
                       ),
                     ),
                   Container(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 12.w, vertical: 6.h),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                     decoration: BoxDecoration(
                       color: categoryBg,
                       borderRadius: BorderRadius.circular(20.r),

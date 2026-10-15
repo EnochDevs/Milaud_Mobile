@@ -211,14 +211,14 @@ class Accessibility {
   /// Create accessible color scheme
   static ColorScheme getAccessibleColorScheme(bool isDarkMode) {
     if (isDarkMode) {
-      return const ColorScheme.dark(
+      return ColorScheme.dark(
         primary: AppColors.milaorBlue,
         secondary: AppColors.philippineGold,
         error: AppColors.error,
         surface: Color(0xFF121212),
       );
     } else {
-      return const ColorScheme.light(
+      return ColorScheme.light(
         primary: AppColors.milaorBlue,
         secondary: AppColors.philippineGold,
         error: AppColors.error,

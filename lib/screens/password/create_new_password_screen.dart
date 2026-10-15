@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: unused_local_variable, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:may_laud/theme/app_theme.dart';
@@ -101,20 +101,33 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
     final cs = theme.colorScheme;
 
     // Adaptive colors — always use heritagePurple as accent in both modes
-    const accentPurple = AppColors.heritagePurple;
+    final accentPurple = AppColors.heritagePurple;
     final scaffoldBg = isDark ? cs.background : AppColors.neutralWhite;
     final bubbleBg1 = AppColors.heritagePurple.withOpacity(0.12);
-    final bubbleBg2Gradient = [AppColors.riverFlow.withOpacity(isDark ? 0.10 : 0.35), Colors.transparent];
-    final bubbleBg3Gradient = [AppColors.heritagePurple.withOpacity(isDark ? 0.12 : 0.4), Colors.transparent];
+    final bubbleBg2Gradient = [
+      AppColors.riverFlow.withOpacity(isDark ? 0.10 : 0.35),
+      Colors.transparent
+    ];
+    final bubbleBg3Gradient = [
+      AppColors.heritagePurple.withOpacity(isDark ? 0.12 : 0.4),
+      Colors.transparent
+    ];
     final titleColor = isDark ? cs.onBackground : AppColors.deepAnchor;
-    final subtitleColor = isDark ? cs.onBackground.withOpacity(0.6) : AppColors.neutralGray500;
+    final subtitleColor =
+        isDark ? cs.onBackground.withOpacity(0.6) : AppColors.neutralGray500;
     final formBg = isDark ? cs.surface : AppColors.warmHearth;
     final inputBg = isDark ? cs.background : AppColors.neutralWhite;
-    final inputBorder = isDark ? cs.onSurface.withOpacity(0.15) : AppColors.neutralGray200;
-    final inputIconColor = isDark ? AppColors.heritagePurple.withOpacity(0.7) : AppColors.neutralGray500;
-    final labelColor = isDark ? cs.onSurface.withOpacity(0.85) : AppColors.neutralGray800;
-    final hintColor = isDark ? cs.onSurface.withOpacity(0.45) : AppColors.neutralGray500;
-    final linkColor = isDark ? cs.onBackground.withOpacity(0.6) : Colors.black54;
+    final inputBorder =
+        isDark ? cs.onSurface.withOpacity(0.15) : AppColors.neutralGray200;
+    final inputIconColor = isDark
+        ? AppColors.heritagePurple.withOpacity(0.7)
+        : AppColors.neutralGray500;
+    final labelColor =
+        isDark ? cs.onSurface.withOpacity(0.85) : AppColors.neutralGray800;
+    final hintColor =
+        isDark ? cs.onSurface.withOpacity(0.45) : AppColors.neutralGray500;
+    final linkColor =
+        isDark ? cs.onBackground.withOpacity(0.6) : Colors.black54;
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -127,7 +140,8 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
             child: Container(
               width: 280.w,
               height: 280.w,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: bubbleBg1),
+              decoration:
+                  BoxDecoration(shape: BoxShape.circle, color: bubbleBg1),
             ),
           ),
           Positioned(
@@ -252,7 +266,8 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
                       borderRadius: BorderRadius.circular(28.r),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.riverFlow.withOpacity(isDark ? 0.05 : 0.08),
+                          color: AppColors.riverFlow
+                              .withOpacity(isDark ? 0.05 : 0.08),
                           blurRadius: 20.r,
                           offset: Offset(0, 8.h),
                         ),
@@ -268,9 +283,10 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
                                 fontSize: 14.sp,
                                 color: labelColor)),
                         SizedBox(height: 6.h),
-                        Text("Create a strong password with at least 8 characters",
-                            style: TextStyle(
-                                fontSize: 12.sp, color: hintColor)),
+                        Text(
+                            "Create a strong password with at least 8 characters",
+                            style:
+                                TextStyle(fontSize: 12.sp, color: hintColor)),
                         SizedBox(height: 10.h),
                         Container(
                           padding: EdgeInsets.symmetric(
@@ -303,9 +319,12 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
                               ),
                               IconButton(
                                 icon: Icon(
-                                    obscure1 ? Icons.visibility_off : Icons.visibility,
+                                    obscure1
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
                                     color: inputIconColor),
-                                onPressed: () => setState(() => obscure1 = !obscure1),
+                                onPressed: () =>
+                                    setState(() => obscure1 = !obscure1),
                               ),
                             ],
                           ),
@@ -344,8 +363,8 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
                                 color: labelColor)),
                         SizedBox(height: 6.h),
                         Text("Re-enter your password to confirm",
-                            style: TextStyle(
-                                fontSize: 12.sp, color: hintColor)),
+                            style:
+                                TextStyle(fontSize: 12.sp, color: hintColor)),
                         SizedBox(height: 10.h),
                         Container(
                           padding: EdgeInsets.symmetric(
@@ -375,9 +394,12 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
                               ),
                               IconButton(
                                 icon: Icon(
-                                    obscure2 ? Icons.visibility_off : Icons.visibility,
+                                    obscure2
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
                                     color: inputIconColor),
-                                onPressed: () => setState(() => obscure2 = !obscure2),
+                                onPressed: () =>
+                                    setState(() => obscure2 = !obscure2),
                               ),
                             ],
                           ),
@@ -444,7 +466,8 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
                             Text(
                               'End-to-end encrypted',
                               style: TextStyle(
-                                color: AppColors.heritagePurple.withOpacity(0.6),
+                                color:
+                                    AppColors.heritagePurple.withOpacity(0.6),
                                 fontSize: 13.sp,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -474,10 +497,12 @@ class _WavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final fillColor =
-        isDark ? AppColors.heritagePurple.withOpacity(0.08) : AppColors.warmHearth;
-    final strokeColor =
-        isDark ? AppColors.heritagePurple.withOpacity(0.25) : AppColors.riverFlow;
+    final fillColor = isDark
+        ? AppColors.heritagePurple.withOpacity(0.08)
+        : AppColors.warmHearth;
+    final strokeColor = isDark
+        ? AppColors.heritagePurple.withOpacity(0.25)
+        : AppColors.riverFlow;
 
     final fillWave = Paint()
       ..color = fillColor

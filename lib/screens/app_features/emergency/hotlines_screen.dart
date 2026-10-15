@@ -2,22 +2,23 @@
 // Mirrors FloodColors purple palette for consistent app-wide branding
 // 60-30-10: warmHearth canvas (60%), card white surfaces (30%), heritage purple accent (10%)
 
+// ignore_for_file: unused_element
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../theme/app_theme.dart';
-import '../../../theme/app_colors.dart';
 import '../../../services/app_services.dart';
 
 // ─── BRAND PALETTE — delegates to AppColors (single source of truth) ───
 class HotlineColors {
-  static const Color heritagePurple = AppColors.heritagePurple;
-  static const Color riverFlow      = AppColors.riverFlow;
-  static const Color deepAnchor     = AppColors.deepAnchor;
-  static const Color warmHearth     = AppColors.warmHearth;
-  static const Color cardWhite      = AppColors.cardWhite;
+  static Color get heritagePurple => AppColors.heritagePurple;
+  static Color get riverFlow => AppColors.riverFlow;
+  static Color get deepAnchor => AppColors.deepAnchor;
+  static const Color warmHearth = AppColors.warmHearth;
+  static const Color cardWhite = AppColors.cardWhite;
 
   // Semantic accents
   static const Color emergencyRed = Color(0xFFDC2626);
@@ -34,11 +35,11 @@ class HotlineColors {
 
   static const Color purpleTint = Color(0xFFF3EFFF); // bg for government icon
 
-  static const LinearGradient headerGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [heritagePurple, deepAnchor],
-  );
+  static LinearGradient get headerGradient => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [heritagePurple, deepAnchor],
+      );
 }
 
 // ─── DATA MODEL ────────────────────────────────────────
@@ -132,7 +133,7 @@ ContactType _contactTypeFor(String? type) {
       return ContactType.health;
     case 'Social':
       return ContactType.services;
-    case 'Utility':                          
+    case 'Utility':
       return ContactType.utilities;
     case 'General':
     default:
@@ -152,8 +153,8 @@ IconData _iconFor(String? type) {
       return Icons.shield_rounded;
     case 'Social':
       return Icons.home_work_rounded;
-    case 'Utility':                                   
-      return Icons.electrical_services_rounded; 
+    case 'Utility':
+      return Icons.electrical_services_rounded;
     case 'General':
     default:
       return Icons.account_balance_rounded;
@@ -177,10 +178,17 @@ class _HotlinesScreenState extends State<HotlinesScreen> {
   Color get _scaffoldBg => _isDark ? _cs!.surface : HotlineColors.warmHearth;
   Color get _cardBg => _isDark ? _cs!.surface : HotlineColors.cardWhite;
   Color get _titleText => AppColors.of(context).textPrimary;
-  Color get _bodyText => _isDark ? _cs!.onSurface.withValues(alpha: 0.65) : AppTheme.neutralGray800;
-  Color get _mutedText => _isDark ? _cs!.onSurface.withValues(alpha: 0.45) : AppTheme.neutralGray500;
-  Color get _dividerColor => _isDark ? _cs!.onSurface.withValues(alpha: 0.12) : AppTheme.neutralGray200;
-  Color get _chipBorder => _isDark ? _cs!.onSurface.withValues(alpha: 0.2) : AppTheme.neutralGray200;
+  Color get _bodyText => _isDark
+      ? _cs!.onSurface.withValues(alpha: 0.65)
+      : AppTheme.neutralGray800;
+  Color get _mutedText => _isDark
+      ? _cs!.onSurface.withValues(alpha: 0.45)
+      : AppTheme.neutralGray500;
+  Color get _dividerColor => _isDark
+      ? _cs!.onSurface.withValues(alpha: 0.12)
+      : AppTheme.neutralGray200;
+  Color get _chipBorder =>
+      _isDark ? _cs!.onSurface.withValues(alpha: 0.2) : AppTheme.neutralGray200;
 
   // FIX — this used to be a `late final` list of hardcoded contacts and
   // never touched Supabase, so hotlines added/edited/removed from the web
@@ -327,8 +335,7 @@ class _HotlinesScreenState extends State<HotlinesScreen> {
                           .slideY(begin: 0.06, end: 0, duration: 350.ms);
                     })
                   else if (_contacts.isEmpty)
-                    _buildMessageState(
-                        'No hotlines have been added yet.',
+                    _buildMessageState('No hotlines have been added yet.',
                         icon: Icons.campaign_outlined)
                   else
                     _buildEmptyState(),
@@ -350,10 +357,11 @@ class _HotlinesScreenState extends State<HotlinesScreen> {
       elevation: 0,
       backgroundColor: HotlineColors.heritagePurple,
       flexibleSpace: Container(
-        decoration: const BoxDecoration(gradient: HotlineColors.headerGradient),
+        decoration: BoxDecoration(gradient: HotlineColors.headerGradient),
       ),
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded, color: AppColors.neutralWhite),
+        icon:
+            const Icon(Icons.arrow_back_rounded, color: AppColors.neutralWhite),
         onPressed: () => Navigator.pop(context),
       ),
       title: Text(
@@ -368,7 +376,8 @@ class _HotlinesScreenState extends State<HotlinesScreen> {
       actions: [
         IconButton(
           onPressed: _loading ? null : _fetchHotlines,
-          icon: const Icon(Icons.refresh_rounded, color: AppColors.neutralWhite),
+          icon:
+              const Icon(Icons.refresh_rounded, color: AppColors.neutralWhite),
           tooltip: 'Refresh',
         ),
         Padding(
@@ -538,9 +547,8 @@ class _HotlinesScreenState extends State<HotlinesScreen> {
                     padding:
                         EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
                     decoration: BoxDecoration(
-                      color: isSelected
-                          ? HotlineColors.heritagePurple
-                          : _cardBg,
+                      color:
+                          isSelected ? HotlineColors.heritagePurple : _cardBg,
                       borderRadius:
                           BorderRadius.circular(AppTheme.borderRadiusCircle),
                       border: Border.all(
@@ -555,8 +563,7 @@ class _HotlinesScreenState extends State<HotlinesScreen> {
                       style: GoogleFonts.inter(
                         fontSize: 13.sp,
                         fontWeight: FontWeight.w600,
-                        color:
-                            isSelected ? AppColors.neutralWhite : _mutedText,
+                        color: isSelected ? AppColors.neutralWhite : _mutedText,
                       ),
                     ),
                   ),
@@ -740,8 +747,7 @@ class _HotlinesScreenState extends State<HotlinesScreen> {
       padding: EdgeInsets.symmetric(vertical: 48.h),
       child: Column(
         children: [
-          Icon(Icons.search_off_rounded,
-              size: 48.sp, color: _dividerColor),
+          Icon(Icons.search_off_rounded, size: 48.sp, color: _dividerColor),
           SizedBox(height: 12.h),
           Text(
             'No contacts in this category',
@@ -763,8 +769,8 @@ class _HotlinesScreenState extends State<HotlinesScreen> {
       decoration: BoxDecoration(
         color: HotlineColors.purpleTint,
         borderRadius: BorderRadius.circular(AppTheme.borderRadiusLg),
-        border:
-            Border.all(color: HotlineColors.heritagePurple.withValues(alpha: 0.15)),
+        border: Border.all(
+            color: HotlineColors.heritagePurple.withValues(alpha: 0.15)),
       ),
       child: Row(
         children: [
@@ -775,7 +781,7 @@ class _HotlinesScreenState extends State<HotlinesScreen> {
               color: HotlineColors.heritagePurple.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(AppTheme.borderRadiusMd),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.info_outline_rounded,
               color: HotlineColors.heritagePurple,
               size: 22,
@@ -861,7 +867,9 @@ class _ContactDetailSheet extends StatelessWidget {
                       style: GoogleFonts.poppins(
                         fontSize: 20.sp,
                         fontWeight: FontWeight.w700,
-                        color: cardBg == Colors.white ? HotlineColors.deepAnchor : Colors.white,
+                        color: cardBg == Colors.white
+                            ? HotlineColors.deepAnchor
+                            : Colors.white,
                       ),
                     ),
                     SizedBox(height: 4.h),

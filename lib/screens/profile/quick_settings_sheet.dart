@@ -25,7 +25,7 @@ class QuickSettingsSheet extends ConsumerWidget {
     final handleColor = isDark ? colorScheme.onSurface.withOpacity(0.2) : Colors.grey[300]!;
     
     // Fixed purple accent – matches ProfileScreen
-    const accentColor = HomeColors.heritagePurple;
+    final accentColor = HomeColors.heritagePurple;
 
     return Container(
       decoration: BoxDecoration(

@@ -164,7 +164,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600, color: colors.textPrimary),
                     maxLines: 1, overflow: TextOverflow.ellipsis)),
                 if (!n.isRead)
-                  Container(width: 10.w, height: 10.w, decoration: const BoxDecoration(color: AppColors.heritagePurple, shape: BoxShape.circle)),
+                  Container(width: 10.w, height: 10.w, decoration: BoxDecoration(color: AppColors.heritagePurple, shape: BoxShape.circle)),
               ]),
               SizedBox(height: 4.h),
               Text(n.message, style: TextStyle(fontSize: 14.sp, color: colors.textSecondary, height: 1.4), maxLines: 2, overflow: TextOverflow.ellipsis),

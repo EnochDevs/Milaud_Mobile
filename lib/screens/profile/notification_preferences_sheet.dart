@@ -24,7 +24,7 @@ class NotificationPreferencesSheet extends ConsumerWidget {
     final dividerColor = isDark ? colorScheme.onSurface.withOpacity(0.12) : const Color(0xFFE0E0E0);
     
     // Fixed purple accent – matches ProfileScreen
-    const accentColor = HomeColors.heritagePurple;
+    final accentColor = HomeColors.heritagePurple;
 
     return Container(
       decoration: BoxDecoration(
@@ -157,7 +157,7 @@ class _NotifSubTileState extends State<_NotifSubTile> {
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
     
-    const accentColor = HomeColors.heritagePurple;
+    final accentColor = HomeColors.heritagePurple;
     final iconColor = isDark ? colorScheme.onSurface.withOpacity(0.5) : const Color(0xFF9E9E9E);
     final titleColor = isDark ? colorScheme.onSurface : const Color(0xFF424242);
     final subtitleColor = isDark ? colorScheme.onSurface.withOpacity(0.6) : const Color(0xFF757575);

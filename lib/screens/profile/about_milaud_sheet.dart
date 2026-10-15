@@ -21,7 +21,7 @@ class AboutMilaudSheet extends StatelessWidget {
     final handleColor = isDark ? colorScheme.onSurface.withOpacity(0.3) : Colors.grey[300]!;
     
     // Fixed purple – matches ProfileScreen's icon color everywhere
-    const fixedAccent = HomeColors.heritagePurple;
+    final fixedAccent = HomeColors.heritagePurple;
 
     return Container(
       decoration: BoxDecoration(

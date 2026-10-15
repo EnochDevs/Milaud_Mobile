@@ -45,7 +45,7 @@ class HelpSupportSheet extends StatelessWidget {
         : HomeColors.heritagePurple.withOpacity(0.06);
     
     // Fixed purple accent – matches ProfileScreen
-    const accentColor = HomeColors.heritagePurple;
+    final accentColor = HomeColors.heritagePurple;
 
     return Container(
       decoration: BoxDecoration(

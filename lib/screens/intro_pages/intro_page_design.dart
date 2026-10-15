@@ -55,10 +55,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: onLastPage
           ? Padding(
               key: const ValueKey('get_started'),
-              padding: EdgeInsets.all(20.r),
+              padding: EdgeInsets.symmetric(
+                horizontal: 14.w,
+                vertical: 12.h,
+              ),
               child: SizedBox(
                 width: double.infinity,
-                height: 55.h,
+                height: 42.h,
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.push(
@@ -71,16 +74,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.neutralWhite,
                     foregroundColor: AppColors.heritagePurple,
+                    padding: EdgeInsets.zero,
+                    elevation: 0,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30.r),
                     ),
-                    elevation: 3,
                   ),
-                  child: Text(
-                    'Get Started',
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      fontWeight: FontWeight.bold,
+                  child: Center(
+                    child: Text(
+                      'Get Started',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        height: 1.0,
+                      ),
                     ),
                   ),
                 ),
@@ -150,48 +160,48 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         top: false,
         child: Stack(
-        children: [
-          // PAGE VIEW
-          PageView(
-            controller: _controller,
-            onPageChanged: (index) {
-              setState(() {
-                onLastPage = (index == 2);
-              });
-            },
-            children: const [
-              IntroPage1(),
-              IntroPage2(),
-              IntroPage3(),
-            ],
-          ),
+          children: [
+            // PAGE VIEW
+            PageView(
+              controller: _controller,
+              onPageChanged: (index) {
+                setState(() {
+                  onLastPage = (index == 2);
+                });
+              },
+              children: const [
+                IntroPage1(),
+                IntroPage2(),
+                IntroPage3(),
+              ],
+            ),
 
-          // BOTTOM CONTAINER
-          Align(
-            alignment: const Alignment(0, 1),
-            child: Container(
-              height: 100.h,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: AppColors.heritagePurple,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(30.r),
-                  topRight: Radius.circular(30.r),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: 10.r,
-                    color: AppColors.neutralBlack.withValues(alpha: 0.26),
-                    offset: Offset(0, -2.h),
+            // BOTTOM CONTAINER
+            Align(
+              alignment: const Alignment(0, 1),
+              child: Container(
+                height: 100.h,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: AppColors.heritagePurple,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(30.r),
+                    topRight: Radius.circular(30.r),
                   ),
-                ],
-              ),
-              child: Center(
-                child: _buildBottomBar(),
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 10.r,
+                      color: AppColors.neutralBlack.withValues(alpha: 0.26),
+                      offset: Offset(0, -2.h),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: _buildBottomBar(),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );

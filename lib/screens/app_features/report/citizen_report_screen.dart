@@ -1,5 +1,5 @@
 // lib/screens/app_features/report/citizen_report_screen.dart
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: unused_field, deprecated_member_use
 
 import 'dart:async';
 
@@ -14,42 +14,45 @@ import 'package:geocoding/geocoding.dart';
 
 import '../../home/home.dart';
 import 'package:may_laud/theme/app_theme.dart';
+import 'package:may_laud/providers/content_providers.dart';
 import '../../home/nav_bar_button.dart';
 import '../../../services/app_services.dart';
 import '../../../services/ai_triage_service.dart';
 import '../../../utils/guest_guard.dart'; // ✅ Import guest guard
+import 'report_history_screen.dart';
 
 // ─── REPORT COLOR PALETTE ─────────────────────────────
 class ReportColors {
-  static const Color heritagePurple = HomeColors.heritagePurple;
-  static const Color deepAnchor = HomeColors.deepAnchor;
+  static Color get heritagePurple => HomeColors.heritagePurple;
+  static Color get deepAnchor => HomeColors.deepAnchor;
   static const Color warmHearth = HomeColors.warmHearth;
   static const Color cardWhite = HomeColors.cardWhite;
-  static const Color riverFlow = HomeColors.riverFlow;
+  static Color get riverFlow => HomeColors.riverFlow;
 
   static const Color priorityLow = Color(0xFF22C55E);
   static const Color priorityMedium = Color(0xFFF59E0B);
   static const Color priorityHigh = Color(0xFFF97316);
   static const Color priorityEmergency = Color(0xFFEF4444);
 
-  static const LinearGradient headerGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [deepAnchor, heritagePurple],
-  );
+  static LinearGradient get headerGradient => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [deepAnchor, heritagePurple],
+      );
 
-  static const LinearGradient submitGradient = LinearGradient(
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-    colors: [heritagePurple, riverFlow],
-  );
+  static LinearGradient get submitGradient => LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [heritagePurple, riverFlow],
+      );
 }
 
 class CitizenReportScreen extends ConsumerStatefulWidget {
   const CitizenReportScreen({super.key});
 
   @override
-  ConsumerState<CitizenReportScreen> createState() => _CitizenReportScreenState();
+  ConsumerState<CitizenReportScreen> createState() =>
+      _CitizenReportScreenState();
 }
 
 class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
@@ -65,15 +68,18 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
   }
 
   // Dark mode palette — matches home.dart's deep navy-purple brand tones
-  static const Color _darkSurface  = Color(0xFF0D0D1A);   // deepest navy scaffold (richer than home's bg)
-  static const Color _darkCard     = Color(0xFF1E1E2E);   // home card colour exactly
-  static const Color _darkElevated = Color(0xFF16162A);   // slightly deeper elevated surface
+  static const Color _darkSurface =
+      Color(0xFF0D0D1A); // deepest navy scaffold (richer than home's bg)
+  static const Color _darkCard = Color(0xFF1E1E2E); // home card colour exactly
+  static const Color _darkElevated =
+      Color(0xFF16162A); // slightly deeper elevated surface
 
-  Color get _scaffoldBg  => _isDark ? _darkSurface  : ReportColors.warmHearth;
-  Color get _cardBg      => _isDark ? _darkCard     : ReportColors.cardWhite;
-  Color get _titleText   => _isDark ? Colors.white  : ReportColors.deepAnchor;
-  Color get _bodyText    => _isDark ? const Color(0xFFCFCFE8) : const Color(0xFF374151);
-  Color get _mutedText   => _isDark ? Colors.white60 : AppColors.neutralGray500;
+  Color get _scaffoldBg => _isDark ? _darkSurface : ReportColors.warmHearth;
+  Color get _cardBg => _isDark ? _darkCard : ReportColors.cardWhite;
+  Color get _titleText => _isDark ? Colors.white : ReportColors.deepAnchor;
+  Color get _bodyText =>
+      _isDark ? const Color(0xFFCFCFE8) : const Color(0xFF374151);
+  Color get _mutedText => _isDark ? Colors.white60 : AppColors.neutralGray500;
 
   // Text/icon color for content sitting on the SliverAppBar's purple
   // gradient specifically — that gradient is the same in both light
@@ -84,8 +90,9 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
   // in headerGradient — using it here is what made "Report an Issue"
   // nearly invisible against its own background.
   static const Color _headerText = Colors.white;
-  Color get _inputFill   => _isDark ? _darkElevated : ReportColors.warmHearth;
-  Color get _borderColor => _isDark ? Colors.white.withValues(alpha: 0.10) : AppColors.neutralGray200;
+  Color get _inputFill => _isDark ? _darkElevated : ReportColors.warmHearth;
+  Color get _borderColor =>
+      _isDark ? Colors.white.withValues(alpha: 0.10) : AppColors.neutralGray200;
 
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
@@ -230,8 +237,9 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     },
   ];
 
-  List<Map<String, dynamic>> get _categories =>
-      _reportType == 'Emergency' ? _emergencyCategories : _minorConcernCategories;
+  List<Map<String, dynamic>> get _categories => _reportType == 'Emergency'
+      ? _emergencyCategories
+      : _minorConcernCategories;
 
   void _setReportType(String type) {
     if (_reportType == type) return;
@@ -539,9 +547,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       // fall back to the category itself so `subcategory` (a required,
       // non-null DB column) still shows admins something readable
       // instead of an empty string.
-      final title = _reportType == 'Emergency'
-          ? category
-          : _titleController.text.trim();
+      final title =
+          _reportType == 'Emergency' ? category : _titleController.text.trim();
 
       final result = await _reportService.submitReport(
         category: category,
@@ -565,6 +572,23 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
         severityResult: _lastSeverityResult,
       );
 
+      if (!mounted) return;
+      // Put the freshly-saved report into the live history provider right
+      // now — the report history screen shows it immediately (and keeps it
+      // current via realtime) without waiting for a fetch round trip.
+      final now = DateTime.now();
+      ref.read(citizenReportsProvider.notifier).addReport(
+            CitizenReport(
+              id: result['reportId'] as String,
+              category: category,
+              subcategory: title,
+              description: _descriptionController.text.trim(),
+              location: _locationController.text.trim(),
+              status: 'received',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
       if (!mounted) return;
       _showSuccessDialog(
         reportId: result['reportId'] as String,
@@ -624,11 +648,16 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                 width: 72.w,
                 height: 72.w,
                 decoration: BoxDecoration(
-                  color: _isDark ? const Color(0xFF1B3A2A) : const Color(0xFFE8F5E9),
+                  color: _isDark
+                      ? const Color(0xFF1B3A2A)
+                      : const Color(0xFFE8F5E9),
                   borderRadius: BorderRadius.circular(20.r),
                 ),
                 child: Icon(Icons.check_circle_rounded,
-                    size: 40, color: _isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32)),
+                    size: 40,
+                    color: _isDark
+                        ? const Color(0xFF66BB6A)
+                        : const Color(0xFF2E7D32)),
               ),
               SizedBox(height: 20.h),
               Text(
@@ -689,6 +718,34 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                   ),
                 ),
               ),
+              SizedBox(height: 10.h),
+              // Shortcut straight to the realtime history so the resident can
+              // start watching the report move Received → Ongoing → Solved.
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const ReportHistoryScreen()),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: ReportColors.heritagePurple,
+                    side: BorderSide(color: ReportColors.heritagePurple),
+                    padding: EdgeInsets.symmetric(vertical: 15.h),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14.r)),
+                  ),
+                  child: Text(
+                    'Track this report',
+                    style: GoogleFonts.inter(
+                        fontSize: 15.sp, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -743,7 +800,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                     ],
                   ],
                   SizedBox(height: 20.h),
-                  _buildPrioritySection(),
+                  //  _buildPrioritySection(),
                   SizedBox(height: 20.h),
                   _buildLocationCard(),
                   SizedBox(height: 24.h),
@@ -766,10 +823,22 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       pinned: true,
       elevation: 0,
       backgroundColor: ReportColors.heritagePurple,
+      // Entry point to the resident's report history — the realtime tracker
+      // where every past report shows its live Received/Ongoing/Solved status.
+      actions: [
+        IconButton(
+          tooltip: 'My report history',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ReportHistoryScreen()),
+          ),
+          icon: const Icon(Icons.history_rounded, color: Colors.white),
+        ),
+        SizedBox(width: 4.w),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
-          decoration:
-              const BoxDecoration(gradient: ReportColors.headerGradient),
+          decoration: BoxDecoration(gradient: ReportColors.headerGradient),
           child: SafeArea(
             child: Padding(
               padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 20.h),
@@ -849,17 +918,15 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
             duration: 200.ms,
             padding: EdgeInsets.symmetric(vertical: 14.h),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? ReportColors.heritagePurple
-                  : Colors.transparent,
+              color:
+                  isSelected ? ReportColors.heritagePurple : Colors.transparent,
               borderRadius: BorderRadius.circular(14.r),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(icon,
-                    size: 16.sp,
-                    color: isSelected ? Colors.white : _mutedText),
+                    size: 16.sp, color: isSelected ? Colors.white : _mutedText),
                 SizedBox(width: 8.w),
                 Text(
                   label,
@@ -887,7 +954,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       child: Row(
         children: [
           segment('Emergency', 'EMERGENCY', Icons.warning_rounded),
-          segment('Minor Concern', 'MINOR CONCERN', Icons.lightbulb_outline_rounded),
+          segment('Minor Concern', 'MINOR CONCERN',
+              Icons.lightbulb_outline_rounded),
         ],
       ),
     ).animate().fadeIn(duration: 300.ms);
@@ -916,8 +984,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                 ),
                 SizedBox(width: 6.w),
                 Text('Scanning photo…',
-                    style: GoogleFonts.inter(
-                        fontSize: 12.sp, color: _mutedText)),
+                    style:
+                        GoogleFonts.inter(fontSize: 12.sp, color: _mutedText)),
               ],
             ],
           ),
@@ -927,8 +995,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
             runSpacing: 10.h,
             children: _categories.map((cat) {
               final isSelected = _selectedCategory == cat['name'];
-              final isAiSuggested = !_categoryManuallySet &&
-                  _aiSuggestedCategory == cat['name'];
+              final isAiSuggested =
+                  !_categoryManuallySet && _aiSuggestedCategory == cat['name'];
               return GestureDetector(
                 onTap: () => setState(() {
                   _selectedCategory = cat['name'];
@@ -944,9 +1012,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(14.r),
                     border: Border.all(
-                      color: isSelected
-                          ? (cat['color'] as Color)
-                          : _borderColor,
+                      color:
+                          isSelected ? (cat['color'] as Color) : _borderColor,
                       width: isSelected ? 1.5 : 1,
                     ),
                   ),
@@ -965,9 +1032,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                           fontSize: 13.sp,
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color: isSelected
-                              ? (cat['color'] as Color)
-                              : _bodyText,
+                          color:
+                              isSelected ? (cat['color'] as Color) : _bodyText,
                         ),
                       ),
                       if (isAiSuggested) ...[
@@ -1019,7 +1085,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
               ? SizedBox(
                   width: 20.w,
                   height: 20.w,
-                  child: const CircularProgressIndicator(
+                  child: CircularProgressIndicator(
                     strokeWidth: 2.5,
                     valueColor: AlwaysStoppedAnimation<Color>(
                         ReportColors.heritagePurple),
@@ -1105,7 +1171,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
                 decoration: BoxDecoration(
-                  border: Border.all(color: severityColor.withValues(alpha: 0.4)),
+                  border:
+                      Border.all(color: severityColor.withValues(alpha: 0.4)),
                   borderRadius: BorderRadius.circular(6.r),
                 ),
                 child: Text(
@@ -1184,157 +1251,6 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
         ],
       ),
     ).animate().fadeIn(duration: 250.ms);
-  }
-
-  // ─── PRIORITY SELECTOR ──────────────────────────────
-  Widget _buildPrioritySection() {
-    return Container(
-      padding: EdgeInsets.all(22.w),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              _sectionHeader('Priority Level', Icons.flag_circle_rounded),
-              if (_isCheckingSeverity) ...[
-                SizedBox(width: 10.w),
-                SizedBox(
-                  width: 13.sp,
-                  height: 13.sp,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(_mutedText),
-                  ),
-                ),
-                SizedBox(width: 6.w),
-                Text('Assessing severity…',
-                    style: GoogleFonts.inter(
-                        fontSize: 12.sp, color: _mutedText)),
-              ],
-            ],
-          ),
-          if (!_priorityManuallySet) ...[
-            SizedBox(height: 4.h),
-            Text(
-              _aiSuggestedPriority != null
-                  ? 'ML has suggested a level. You may override below.'
-                  : _reportType == 'Emergency'
-                      ? 'Describe the issue above, then tap Auto-Classify Severity — or pick a level yourself.'
-                      : 'Select the severity that best describes the situation.',
-              style: GoogleFonts.inter(fontSize: 11.sp, color: _mutedText),
-            ),
-          ],
-          SizedBox(height: 14.h),
-          ..._priorities.map((p) {
-            final isSelected = _selectedPriority == p['level'];
-            final isAiSuggested =
-                !_priorityManuallySet && _aiSuggestedPriority == p['level'];
-            final Color color = p['color'];
-            return Padding(
-              padding: EdgeInsets.only(bottom: 10.h),
-              child: Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(16.r),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16.r),
-                  onTap: () => setState(() {
-                    _selectedPriority = p['level'];
-                    _priorityManuallySet = true;
-                  }),
-                  child: AnimatedContainer(
-                    duration: 200.ms,
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? color.withValues(alpha: 0.06)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16.r),
-                      border: Border.all(
-                        color: isSelected ? color : _borderColor,
-                        width: isSelected ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40.w,
-                          height: 40.w,
-                          decoration: BoxDecoration(
-                            color: isSelected ? color : color.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12.r),
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                        color: color.withValues(alpha: 0.3),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 3))
-                                  ]
-                                : null,
-                          ),
-                          child: Icon(p['icon'] as IconData,
-                              color: isSelected ? Colors.white : color,
-                              size: 20.sp),
-                        ),
-                        SizedBox(width: 14.w),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    p['level'],
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 15.sp,
-                                      fontWeight: FontWeight.w600,
-                                      color: isSelected
-                                          ? _titleText
-                                          : _bodyText,
-                                    ),
-                                  ),
-                                  if (isAiSuggested) ...[
-                                    SizedBox(width: 6.w),
-                                    Icon(Icons.auto_awesome_rounded,
-                                        size: 13.sp, color: color),
-                                  ],
-                                ],
-                              ),
-                              Text(
-                                p['label'],
-                                style: GoogleFonts.inter(
-                                  fontSize: 12.sp,
-                                  color: _mutedText,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (isSelected)
-                          Container(
-                            width: 24.w,
-                            height: 24.w,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(Icons.check_rounded,
-                                color: _cardBg, size: 16),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-        ],
-      ),
-    )
-        .animate()
-        .fadeIn(duration: 400.ms, delay: 100.ms)
-        .slideY(begin: 0.04, end: 0);
   }
 
   // ─── DETAILS CARD ───────────────────────────────────
@@ -1416,14 +1332,15 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                     color: ReportColors.heritagePurple.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(14.r),
                     border: Border.all(
-                        color: ReportColors.heritagePurple.withValues(alpha: 0.15)),
+                        color: ReportColors.heritagePurple
+                            .withValues(alpha: 0.15)),
                   ),
                   child: _isFetchingLocation
                       ? Padding(
                           padding: EdgeInsets.all(14.w),
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
+                            valueColor: AlwaysStoppedAnimation<Color>(
                                 ReportColors.heritagePurple),
                           ),
                         )
@@ -1547,7 +1464,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
           color: _scaffoldBg,
           borderRadius: BorderRadius.circular(16.r),
           border: Border.all(
-              color: ReportColors.heritagePurple.withValues(alpha: 0.15), width: 1.5),
+              color: ReportColors.heritagePurple.withValues(alpha: 0.15),
+              width: 1.5),
         ),
         child: Column(
           children: [
@@ -1572,8 +1490,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
             SizedBox(height: 4.h),
             Text(
               'Gallery or Camera',
-              style:
-                  GoogleFonts.inter(fontSize: 12.sp, color: _mutedText),
+              style: GoogleFonts.inter(fontSize: 12.sp, color: _mutedText),
             ),
           ],
         ),
@@ -1591,10 +1508,12 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
           color: ReportColors.heritagePurple.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(14.r),
           border: Border.all(
-              color: ReportColors.heritagePurple.withValues(alpha: 0.2), width: 1.5),
+              color: ReportColors.heritagePurple.withValues(alpha: 0.2),
+              width: 1.5),
         ),
         child: Icon(Icons.add_rounded,
-            size: 30.sp, color: ReportColors.heritagePurple.withValues(alpha: 0.6)),
+            size: 30.sp,
+            color: ReportColors.heritagePurple.withValues(alpha: 0.6)),
       ),
     );
   }
@@ -1622,8 +1541,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
               height: 26.w,
               decoration: const BoxDecoration(
                   color: Colors.black54, shape: BoxShape.circle),
-              child:
-                  Icon(Icons.close_rounded, size: 15.sp, color: _cardBg),
+              child: Icon(Icons.close_rounded, size: 15.sp, color: _cardBg),
             ),
           ),
         ),
@@ -1650,7 +1568,9 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
               width: 40.w,
               height: 4.h,
               decoration: BoxDecoration(
-                  color: _isDark ? Colors.white.withValues(alpha: 0.18) : AppColors.neutralGray200,
+                  color: _isDark
+                      ? Colors.white.withValues(alpha: 0.18)
+                      : AppColors.neutralGray200,
                   borderRadius: BorderRadius.circular(2.r)),
             ),
             SizedBox(height: 22.h),
@@ -1703,9 +1623,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       ),
       title: Text(title,
           style: GoogleFonts.inter(
-              fontSize: 15.sp,
-              fontWeight: FontWeight.w600,
-              color: _titleText)),
+              fontSize: 15.sp, fontWeight: FontWeight.w600, color: _titleText)),
       subtitle: Text(subtitle,
           style: GoogleFonts.inter(fontSize: 13.sp, color: _mutedText)),
     );
@@ -1746,8 +1664,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.send_rounded,
-                          color: _cardBg, size: 22),
+                      Icon(Icons.send_rounded, color: _cardBg, size: 22),
                       SizedBox(width: 10.w),
                       Text(
                         'Submit Report',
@@ -1773,7 +1690,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       decoration: BoxDecoration(
         color: _cardBg,
         borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: _isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE8E0F0)),
+        border: Border.all(
+            color: _isDark ? const Color(0xFF3A3A3A) : const Color(0xFFE8E0F0)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1860,9 +1778,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       controller: controller,
       maxLines: maxLines,
       style: GoogleFonts.inter(
-          fontSize: 15.sp,
-          fontWeight: FontWeight.w500,
-          color: _titleText),
+          fontSize: 15.sp, fontWeight: FontWeight.w500, color: _titleText),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle:
@@ -1870,7 +1786,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
         prefixIcon: Padding(
           padding: EdgeInsets.only(left: 4.w),
           child: Icon(icon,
-              size: 20.sp, color: ReportColors.heritagePurple.withValues(alpha: 0.5)),
+              size: 20.sp,
+              color: ReportColors.heritagePurple.withValues(alpha: 0.5)),
         ),
         filled: true,
         fillColor: _inputFill,
@@ -1885,7 +1802,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14.r),
           borderSide:
-              const BorderSide(color: ReportColors.heritagePurple, width: 1.5),
+              BorderSide(color: ReportColors.heritagePurple, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14.r),

@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:may_laud/theme/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,7 +59,9 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
 
     // Adaptive colors
     final scaffoldBg = isDark ? cs.background : AppColors.neutralWhite;
-    final bubbleBg1 = isDark ? cs.primary.withOpacity(0.12) : AppColors.heritagePurple.withValues(alpha: 0.12);
+    final bubbleBg1 = isDark
+        ? cs.primary.withOpacity(0.12)
+        : AppColors.heritagePurple.withValues(alpha: 0.12);
     final bubbleBg2Gradient = isDark
         ? [cs.primary.withOpacity(0.10), Colors.transparent]
         : [AppColors.riverFlow.withOpacity(0.35), Colors.transparent];
@@ -65,17 +69,23 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
         ? [cs.primary.withOpacity(0.12), Colors.transparent]
         : [AppColors.riverFlow.withOpacity(0.4), Colors.transparent];
     final titleColor = isDark ? cs.onBackground : AppColors.deepAnchor;
-    final subtitleColor = isDark ? cs.onBackground.withOpacity(0.6) : AppColors.neutralGray500;
+    final subtitleColor =
+        isDark ? cs.onBackground.withOpacity(0.6) : AppColors.neutralGray500;
     final formBg = isDark ? cs.surface : AppColors.warmHearth;
     final inputBg = isDark ? cs.background : AppColors.neutralWhite;
-    final inputBorder = isDark ? cs.onSurface.withOpacity(0.15) : AppColors.neutralGray200;
-    final inputIconColor = isDark ? cs.onSurface.withOpacity(0.5) : AppColors.neutralGray500;
-    final labelColor = isDark ? cs.onSurface.withOpacity(0.85) : AppColors.neutralGray800;
-    final hintColor = isDark ? cs.onSurface.withOpacity(0.45) : AppColors.neutralGray500;
+    final inputBorder =
+        isDark ? cs.onSurface.withOpacity(0.15) : AppColors.neutralGray200;
+    final inputIconColor =
+        isDark ? cs.onSurface.withOpacity(0.5) : AppColors.neutralGray500;
+    final labelColor =
+        isDark ? cs.onSurface.withOpacity(0.85) : AppColors.neutralGray800;
+    final hintColor =
+        isDark ? cs.onSurface.withOpacity(0.45) : AppColors.neutralGray500;
     final accentPurple = isDark ? cs.primary : AppColors.heritagePurple;
     final guestBg = isDark ? cs.surface : AppColors.neutralWhite;
     final guestText = isDark ? cs.primary : AppColors.heritagePurple;
-    final linkColor = isDark ? cs.onBackground.withOpacity(0.6) : Colors.black54;
+    final linkColor =
+        isDark ? cs.onBackground.withOpacity(0.6) : Colors.black54;
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -88,7 +98,8 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
             child: Container(
               width: 280.w,
               height: 280.w,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: bubbleBg1),
+              decoration:
+                  BoxDecoration(shape: BoxShape.circle, color: bubbleBg1),
             ),
           ),
           Positioned(
@@ -164,7 +175,8 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
                       borderRadius: BorderRadius.circular(28.r),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.riverFlow.withOpacity(isDark ? 0.05 : 0.08),
+                          color: AppColors.riverFlow
+                              .withOpacity(isDark ? 0.05 : 0.08),
                           blurRadius: 20.r,
                           offset: Offset(0, 8.h),
                         ),
@@ -180,8 +192,8 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
                                 color: labelColor)),
                         SizedBox(height: 6.h),
                         Text("We'll use this to sign you in",
-                            style: TextStyle(
-                                fontSize: 12.sp, color: hintColor)),
+                            style:
+                                TextStyle(fontSize: 12.sp, color: hintColor)),
                         SizedBox(height: 10.h),
                         Container(
                           padding: EdgeInsets.symmetric(
@@ -193,8 +205,7 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
                           ),
                           child: Row(
                             children: [
-                              Icon(Icons.email_outlined,
-                                  color: inputIconColor),
+                              Icon(Icons.email_outlined, color: inputIconColor),
                               SizedBox(width: 12.w),
                               Expanded(
                                 child: TextField(
@@ -220,8 +231,8 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
                                 color: labelColor)),
                         SizedBox(height: 6.h),
                         Text("Enter your password to access your account",
-                            style: TextStyle(
-                                fontSize: 12.sp, color: hintColor)),
+                            style:
+                                TextStyle(fontSize: 12.sp, color: hintColor)),
                         SizedBox(height: 10.h),
                         Container(
                           padding: EdgeInsets.symmetric(
@@ -274,8 +285,7 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
                                 ),
                                 Text("Remember me",
                                     style: TextStyle(
-                                        fontSize: 14.sp,
-                                        color: cs.onSurface)),
+                                        fontSize: 14.sp, color: cs.onSurface)),
                               ],
                             ),
                             GestureDetector(
@@ -305,11 +315,10 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
                             onTap: _login,
                             child: Container(
                               width: double.infinity,
-                              padding:
-                                  EdgeInsets.symmetric(vertical: 16.h),
+                              padding: EdgeInsets.symmetric(vertical: 16.h),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(40.r),
-                                gradient: const LinearGradient(
+                                gradient: LinearGradient(
                                   colors: [
                                     AppColors.heritagePurple,
                                     AppColors.riverFlow
@@ -387,8 +396,7 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen> {
                           },
                           child: Container(
                             width: double.infinity,
-                            padding:
-                                EdgeInsets.symmetric(vertical: 16.h),
+                            padding: EdgeInsets.symmetric(vertical: 16.h),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(40.r),
                               color: guestBg,

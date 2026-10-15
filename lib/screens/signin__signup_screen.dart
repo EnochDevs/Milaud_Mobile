@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:may_laud/providers/auth_provider.dart';
 import 'package:may_laud/screens/sign_in/sign_in_screen.dart';
 import 'package:may_laud/screens/sign_up/registration_screen.dart';
-import 'package:may_laud/screens/home/nav_bar_button.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:may_laud/theme/app_colors.dart';
 
@@ -29,7 +27,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -38,16 +35,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     // Same adaptive palette as sign-in & register screens
     final scaffoldBg = isDark ? cs.background : Colors.white;
-    final bubbleBg1 =
-        isDark ? cs.primary.withValues(alpha: 0.12) : AppColors.heritagePurple.withValues(alpha: 0.08);
+    final bubbleBg1 = isDark
+        ? cs.primary.withValues(alpha: 0.12)
+        : AppColors.heritagePurple.withValues(alpha: 0.08);
     final bubbleBg2Gradient = isDark
         ? [cs.primary.withValues(alpha: 0.10), Colors.transparent]
-        : [AppColors.heritagePurple.withValues(alpha: 0.35), Colors.transparent];
+        : [
+            AppColors.heritagePurple.withValues(alpha: 0.35),
+            Colors.transparent
+          ];
     final bubbleBg3Gradient = isDark
         ? [cs.primary.withValues(alpha: 0.12), Colors.transparent]
         : [AppColors.heritagePurple.withValues(alpha: 0.4), Colors.transparent];
-    final titleColor =
-        isDark ? cs.onSurface : AppColors.deepAnchor;
+    final titleColor = isDark ? cs.onSurface : AppColors.deepAnchor;
     final subtitleColor = isDark
         ? cs.onSurface.withValues(alpha: 0.6)
         : AppColors.of(context).textMuted;
@@ -114,8 +114,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           // Main content
           SafeArea(
             child: SingleChildScrollView(
-              padding:
-                  EdgeInsets.symmetric(horizontal: 24.w, vertical: 30.h),
+              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 30.h),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -157,8 +156,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Text(
                     "Sign in to your account or create a new one.",
                     textAlign: TextAlign.center,
-                    style:
-                        TextStyle(fontSize: 14.sp, color: subtitleColor),
+                    style: TextStyle(fontSize: 14.sp, color: subtitleColor),
                   ),
 
                   SizedBox(height: 30.h),
@@ -185,11 +183,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           onTap: handleSignIn,
                           child: Container(
                             width: double.infinity,
-                            padding:
-                                EdgeInsets.symmetric(vertical: 16.h),
+                            padding: EdgeInsets.symmetric(vertical: 16.h),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(40.r),
-                              gradient: const LinearGradient(
+                              gradient: LinearGradient(
                                 colors: [
                                   AppColors.heritagePurple,
                                   AppColors.riverFlow,
@@ -224,8 +221,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           onTap: handleRegister,
                           child: Container(
                             width: double.infinity,
-                            padding:
-                                EdgeInsets.symmetric(vertical: 16.h),
+                            padding: EdgeInsets.symmetric(vertical: 16.h),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(40.r),
                               color: guestBg,
@@ -257,8 +253,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ),
                         ),
-
-
                       ],
                     ),
                   ),
@@ -268,8 +262,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // Footer
                   Text(
                     "By continuing, you agree to our",
-                    style:
-                        TextStyle(color: footerColor, fontSize: 12.sp),
+                    style: TextStyle(color: footerColor, fontSize: 12.sp),
                   ),
                   SizedBox(height: 8.h),
                   Row(
@@ -285,8 +278,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       SizedBox(width: 12.w),
                       Text("•",
-                          style: TextStyle(
-                              color: footerColor, fontSize: 12.sp)),
+                          style:
+                              TextStyle(color: footerColor, fontSize: 12.sp)),
                       SizedBox(width: 12.w),
                       Text(
                         "Privacy Policy",
@@ -301,8 +294,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   SizedBox(height: 10.h),
                   Text(
                     "© 2026 Maylaud Municipality. All rights reserved.",
-                    style:
-                        TextStyle(color: footerColor, fontSize: 12.sp),
+                    style: TextStyle(color: footerColor, fontSize: 12.sp),
                   ),
                   SizedBox(height: 20.h),
                 ],
@@ -323,10 +315,12 @@ class _WavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final fillColor =
-        isDark ? cs.primary.withValues(alpha: 0.08) : AppColors.heritagePurple.withValues(alpha: 0.06);
-    final strokeColor =
-        isDark ? cs.primary.withValues(alpha: 0.25) : AppColors.heritagePurple.withValues(alpha: 0.25);
+    final fillColor = isDark
+        ? cs.primary.withValues(alpha: 0.08)
+        : AppColors.heritagePurple.withValues(alpha: 0.06);
+    final strokeColor = isDark
+        ? cs.primary.withValues(alpha: 0.25)
+        : AppColors.heritagePurple.withValues(alpha: 0.25);
 
     final fillWave = Paint()
       ..color = fillColor
@@ -339,10 +333,8 @@ class _WavePainter extends CustomPainter {
 
     final path1 = Path();
     path1.moveTo(0, 70);
-    path1.quadraticBezierTo(
-        size.width * 0.25, 20, size.width * 0.5, 90);
-    path1.quadraticBezierTo(
-        size.width * 0.75, 150, size.width, 70);
+    path1.quadraticBezierTo(size.width * 0.25, 20, size.width * 0.5, 90);
+    path1.quadraticBezierTo(size.width * 0.75, 150, size.width, 70);
     path1.lineTo(size.width, size.height);
     path1.lineTo(0, size.height);
     path1.close();
@@ -351,10 +343,8 @@ class _WavePainter extends CustomPainter {
 
     final path2 = Path();
     path2.moveTo(0, 90);
-    path2.quadraticBezierTo(
-        size.width * 0.3, 40, size.width * 0.6, 110);
-    path2.quadraticBezierTo(
-        size.width * 0.85, 170, size.width, 100);
+    path2.quadraticBezierTo(size.width * 0.3, 40, size.width * 0.6, 110);
+    path2.quadraticBezierTo(size.width * 0.85, 170, size.width, 100);
 
     canvas.drawPath(path2, lineWave);
   }

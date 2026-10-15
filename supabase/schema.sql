@@ -146,15 +146,46 @@ create policy "Anyone can view active hotlines"
 -- DOCUMENT REQUESTS (content_providers.dart, app_services.dart)
 -- ─────────────────────────────────────────────────────────
 create table if not exists public.document_requests (
-  id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null references auth.users (id) on delete cascade,
-  document_type text not null,
-  purpose       text not null,
-  status        text not null default 'pending',
-  fee           text,
-  notes         text,
-  created_at    timestamptz not null default now()
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null references auth.users (id) on delete cascade,
+  document_type    text not null,
+  purpose          text not null,
+  status           text not null default 'pending',
+  fee              text,
+  notes            text,
+  -- Everything the resident fills in on the mobile request form, so the web
+  -- admin can show it. `notes` is kept (it still carries the urgency string)
+  -- for admins that already render that column.
+  full_name        text,
+  address          text,
+  urgency          text,
+  additional_notes text,
+  attachment_urls  text[] not null default '{}',
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
 );
+
+alter table public.document_requests replica identity full;
+alter table public.notifications replica identity full;
+
+-- Projects created before updated_at existed: add it in place so re-running
+-- this file is safe. The resident tracker surfaces "Last Updated" from this.
+alter table public.document_requests
+  add column if not exists updated_at timestamptz not null default now();
+
+-- Detail columns added with the "show the resident's full request in the web
+-- admin" change — same guard so an already-provisioned project picks them up
+-- without a rebuild.
+alter table public.document_requests
+  add column if not exists full_name        text;
+alter table public.document_requests
+  add column if not exists address          text;
+alter table public.document_requests
+  add column if not exists urgency          text;
+alter table public.document_requests
+  add column if not exists additional_notes text;
+alter table public.document_requests
+  add column if not exists attachment_urls  text[] not null default '{}';
 
 alter table public.document_requests enable row level security;
 
@@ -165,6 +196,90 @@ create policy "Users can view their own document requests"
 create policy "Users can create their own document requests"
   on public.document_requests for insert
   with check (auth.uid() = user_id);
+
+-- Auto-touch updated_at -----------------------------------------------------
+-- The resident tracker shows "Last Updated", so keep it accurate whenever an
+-- admin changes a request's status from the web dashboard.
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end $$;
+
+drop trigger if exists document_requests_set_updated_at
+  on public.document_requests;
+create trigger document_requests_set_updated_at
+  before update on public.document_requests
+  for each row execute function public.set_updated_at();
+
+-- Auto-notify the resident on a status change -------------------------------
+-- When an admin moves a request to processing / ready / released / rejected,
+-- drop a notification into that resident's inbox. That row is what the app's
+-- `notifications` realtime subscription picks up (live in-app update) AND what
+-- the Database Webhook -> `push` Edge Function turns into an FCM push that
+-- reaches the phone even while the app is backgrounded or closed.
+--
+-- SECURITY DEFINER so the insert can target the *resident's* user_id without
+-- tripping the "Users can create their own notifications" RLS policy.
+--
+-- See supabase/document_requests_full_details.sql and
+-- supabase/PUSH_NOTIFICATIONS_SETUP.md.
+create or replace function public.notify_document_request_status_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  status_label text;
+  doc_label    text;
+  ref_label    text;
+begin
+  -- Only an actual status change should buzz the resident's phone.
+  if new.status is not distinct from old.status then
+    return new;
+  end if;
+
+  status_label := case lower(coalesce(new.status, ''))
+    when 'pending'    then 'Pending Review'
+    when 'processing' then 'Processing'
+    when 'ready'      then 'Ready for Pickup'
+    when 'released'   then 'Released'
+    when 'completed'  then 'Completed'
+    when 'rejected'   then 'Rejected'
+    else initcap(coalesce(new.status, 'updated'))
+  end;
+
+  doc_label := coalesce(nullif(new.document_type, ''), 'Document');
+  -- Matches DocumentRequest.reference in content_providers.dart.
+  ref_label := 'MLR-' || upper(substr(replace(new.id::text, '-', ''), 1, 8));
+
+  insert into public.notifications (user_id, title, message, type, data)
+  values (
+    new.user_id,
+    'Document request update',
+    'Your ' || doc_label || ' request (' || ref_label || ') is now '
+      || status_label || '.',
+    'document_request',
+    jsonb_build_object(
+      'type',                'document_request',
+      'document_request_id', new.id,
+      'status',              new.status,
+      'reference',           ref_label
+    )
+  );
+
+  return new;
+end $$;
+
+drop trigger if exists document_requests_notify_status_change
+  on public.document_requests;
+create trigger document_requests_notify_status_change
+  after update on public.document_requests
+  for each row execute function public.notify_document_request_status_change();
 
 -- ─────────────────────────────────────────────────────────
 -- CITIZEN REPORTS (app_services.dart, ai_triage_service.dart results)
@@ -198,6 +313,97 @@ create policy "Users can view their own citizen reports"
 create policy "Users can create their own citizen reports"
   on public.citizen_reports for insert
   with check (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────────────────────
+-- CITIZEN REPORT status-change plumbing (mirrors document_requests above;
+-- the standalone supabase/citizen_reports_status_tracking.sql installs the
+-- exact same pieces for projects provisioned before that file existed).
+--
+-- * updated_at — the history screen's "Last Updated" row; bumped whenever the
+--   web admin changes the status.
+-- * REPLICA IDENTITY FULL — the mobile history screen matches realtime UPDATE
+--   events by row id (CitizenReportsProvider._handleRealtimeChange), so the
+--   payload must carry the full row, not just the changed column.
+-- * notify_status_change — inserts the resident's inbox row (type
+--   'citizen_report'), which BOTH the app's realtime subscription shows live
+--   AND the Database Webhook -> `push` Edge Function turns into an FCM push
+--   that reaches the phone while the app is backgrounded or closed.
+-- ─────────────────────────────────────────────────────────
+alter table public.citizen_reports
+  add column if not exists updated_at timestamptz not null default now();
+
+alter table public.citizen_reports replica identity full;
+
+drop trigger if exists citizen_reports_set_updated_at
+  on public.citizen_reports;
+create trigger citizen_reports_set_updated_at
+  before update on public.citizen_reports
+  for each row execute function public.set_updated_at();
+
+-- Friendly resident-facing wording per status (used by the trigger below).
+create or replace function public.citizen_reports_status_label(status text)
+returns text
+language sql
+immutable
+set search_path = public
+as $$
+  select case lower(coalesce(status, ''))
+    when 'received'    then 'Received'
+    when 'assigned'    then 'Assigned'
+    when 'in_progress' then 'Ongoing'
+    when 'resolved'    then 'Resolved'
+    when 'closed'      then 'Closed'
+    else initcap(coalesce(status, 'received'))
+  end;
+$$;
+
+create or replace function public.citizen_reports_notify_status_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  ref_label text;
+  old_label text;
+  new_label text;
+begin
+  if old.status is not distinct from new.status then
+    return new;
+  end if;
+
+  -- Matches CitizenReport.reference in content_providers.dart so the push,
+  -- the in-app notification and the history card all show the same code.
+  ref_label := 'RPT-' || upper(substr(replace(new.id::text, '-', ''), 1, 8));
+  old_label  := public.citizen_reports_status_label(old.status);
+  new_label  := public.citizen_reports_status_label(new.status);
+
+  insert into public.notifications (user_id, title, message, type, data)
+  values (
+    new.user_id,
+    'Report update — ' || new_label,
+    'Your report ' || ref_label || ' moved from ' || old_label
+      || ' to ' || new_label || '.',
+    'citizen_report',
+    jsonb_build_object(
+      'type',       'citizen_report',
+      'report_id',  new.id::text,
+      'status',     new.status,
+      'reference',  ref_label
+    )
+  );
+
+  return new;
+end;
+$$;
+
+drop trigger if exists citizen_reports_notify_status_change
+  on public.citizen_reports;
+create trigger citizen_reports_notify_status_change
+  after update of status on public.citizen_reports
+  for each row
+  when (old.status is distinct from new.status)
+  execute function public.citizen_reports_notify_status_change();
 
 -- ─────────────────────────────────────────────────────────
 -- FLOOD ALERTS — public read-only (app_services.dart)
@@ -288,6 +494,26 @@ create policy "Users can upload their own report photos"
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
+-- document-attachments bucket — supporting documents the resident attaches to
+-- a document request (content_providers.dart: submitRequest()).
+insert into storage.buckets (id, name, public)
+values ('document-attachments', 'document-attachments', true)
+on conflict (id) do nothing;
+
+drop policy if exists "Anyone can view document attachments" on storage.objects;
+drop policy if exists "Users can upload their own document attachments" on storage.objects;
+
+create policy "Anyone can view document attachments"
+  on storage.objects for select
+  using (bucket_id = 'document-attachments');
+
+create policy "Users can upload their own document attachments"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'document-attachments'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
 -- ─────────────────────────────────────────────────────────
 -- SEED DATA — optional, so screens aren't empty on first run.
 -- Delete or edit freely; the app works fine with none of this.
@@ -297,3 +523,28 @@ insert into public.hotlines (name, number, type, is_active) values
   ('PNP Milaor',  '0917-000-0000', 'Police', true),
   ('MDRRMO',      '0918-000-0000', 'Rescue', true)
 on conflict do nothing;
+
+-- REALTIME ------------------------------------------------------------------
+-- Expose the tables the app subscribes to via Postgres Changes. The resident
+-- document tracker (content_providers.dart: DocumentRequestsProvider) listens
+-- for live updates on `document_requests`; notifications already had a
+-- client-side subscription too. Both are added to the supabase_realtime
+-- publication here so updates actually stream to the app. Guarded so
+-- re-running this file is safe.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['document_requests', 'notifications', 'citizen_reports'] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = t
+    ) then
+      execute format(
+        'alter publication supabase_realtime add table public.%I', t
+      );
+    end if;
+  end loop;
+end $$;

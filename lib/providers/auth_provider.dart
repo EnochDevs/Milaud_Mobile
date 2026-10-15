@@ -108,6 +108,7 @@ class AuthProvider extends StateNotifier<AuthState> {
   void _resetPerUserProviders() {
     _ref.invalidate(notificationsProvider);
     _ref.invalidate(announcementsProvider);
+    _ref.invalidate(documentRequestsProvider);
   }
 
   Future<void> _checkAuthStatus() async {

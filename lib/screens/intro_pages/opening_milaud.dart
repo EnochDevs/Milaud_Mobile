@@ -85,7 +85,7 @@ class _OpeningScreenState extends State<OpeningScreen>
             child: FadeTransition(
               opacity: _fadeAnim,
               child: Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment(-0.32, 0.14),
                     end: Alignment(1.32, 0.86),

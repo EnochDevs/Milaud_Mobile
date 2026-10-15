@@ -1,10 +1,11 @@
+// ignore_for_file: unused_local_variable
+
 import 'package:may_laud/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../../providers/app_providers.dart';
-import '../home/home.dart';
 
 class PrivacySecuritySheet extends ConsumerWidget {
   const PrivacySecuritySheet({super.key});
@@ -25,7 +26,7 @@ class PrivacySecuritySheet extends ConsumerWidget {
     final dividerColor = AppColors.of(context).divider;
     final footnoteColor = AppColors.of(context).textMuted;
     final chevronColor = AppColors.of(context).iconMuted;
-    
+
     // Fixed purple accent – matches ProfileScreen
     final accentColor = AppColors.of(context).accentPurple;
 
@@ -130,7 +131,7 @@ class PrivacySecuritySheet extends ConsumerWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
-    
+
     final dialogBgColor = AppColors.of(context).surface;
     final textColor = AppColors.of(context).textSecondary;
     final cancelTextColor = AppColors.of(context).textMuted;

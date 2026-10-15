@@ -20,7 +20,7 @@ class ChangePhotoSheet extends StatelessWidget {
     final borderColor = isDark ? colorScheme.onSurface.withOpacity(0.15) : Colors.grey[200]!;
     
     // Fixed purple accent – same as ProfileScreen
-    const accentColor = HomeColors.heritagePurple;
+    final accentColor = HomeColors.heritagePurple;
 
     return Container(
       decoration: BoxDecoration(

@@ -61,10 +61,39 @@ class PushNotificationService {
 
   /// Fired when the user taps a notification — a foreground one shown by
   /// flutter_local_notifications, or one that opened the app from the
-  /// background/terminated state. `data` is the FCM message's data
-  /// payload (e.g. {'type': 'announcement', 'id': '...'}), so the caller
-  /// can decide where to navigate.
-  void Function(Map<String, dynamic> data)? onNotificationTap;
+  /// background/terminated state. `data` is the FCM message's data payload
+  /// (e.g. {'type': 'document_request', 'document_request_id': '...'}), so the
+  /// caller can decide where to navigate.
+  ///
+  /// A tap can arrive BEFORE the app wires this handler: on a cold start
+  /// `main()` calls init() (which runs getInitialMessage()) before runApp(),
+  /// so the very tap that launched the app is processed while this is still
+  /// null. Rather than dropping it, the last tap is buffered and delivered the
+  /// moment a handler is assigned.
+  void Function(Map<String, dynamic> data)? get onNotificationTap =>
+      _onNotificationTap;
+  set onNotificationTap(void Function(Map<String, dynamic> data)? handler) {
+    _onNotificationTap = handler;
+    final pending = _pendingTap;
+    if (handler != null && pending != null) {
+      _pendingTap = null;
+      handler(pending);
+    }
+  }
+
+  void Function(Map<String, dynamic> data)? _onNotificationTap;
+  Map<String, dynamic>? _pendingTap;
+
+  /// Delivers a tap to the registered handler, or buffers it if none is set
+  /// yet (see [onNotificationTap]).
+  void _emitTap(Map<String, dynamic> data) {
+    final handler = _onNotificationTap;
+    if (handler != null) {
+      handler(data);
+    } else {
+      _pendingTap = data;
+    }
+  }
 
   /// Fired whenever a push is received while the app is running
   /// (foreground) or just opened one — a good hook to refresh
@@ -127,7 +156,7 @@ class PushNotificationService {
       const InitializationSettings(android: androidInit, iOS: iosInit),
       onDidReceiveNotificationResponse: (response) {
         final type = response.payload;
-        if (type != null) onNotificationTap?.call({'type': type});
+        if (type != null) _emitTap({'type': type});
       },
     );
 
@@ -174,7 +203,7 @@ class PushNotificationService {
   }
 
   void _handleMessageOpenedApp(RemoteMessage message) {
-    onNotificationTap?.call(message.data);
+    _emitTap(message.data);
     onMessageReceived?.call();
   }
 
