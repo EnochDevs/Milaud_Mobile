@@ -7,14 +7,22 @@ import 'package:pull_to_refresh/pull_to_refresh.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/ai_triage_service.dart';
+// 7-day rain forecast (Open-Meteo). This feature deliberately reports
+// rainfall (mm) + probability only — it never fabricates a river-gauge
+// water level in meters (see weather_risk_models.dart's design contract).
+import '../../../features/rain_forecast/repository/weather_repository.dart';
+import '../../../features/rain_forecast/models/weather_data_models.dart';
+import '../../../features/rain_forecast/types.dart';
+import '../../../features/rain_forecast/risk/weather_risk_rules.dart';
+import '../../../features/rain_forecast/risk/rain_risk_classifier.dart';
 
 // ─── BRAND PALETTE — delegates to AppColors (single source of truth) ───
 class FloodColors {
-  static const Color heritagePurple = AppColors.heritagePurple;
-  static const Color riverFlow      = AppColors.riverFlow;
-  static const Color deepAnchor     = AppColors.deepAnchor;
-  static const Color warmHearth     = AppColors.warmHearth;
-  static const Color cardWhite      = AppColors.cardWhite;
+  static Color get heritagePurple => AppColors.heritagePurple;
+  static Color get riverFlow => AppColors.riverFlow;
+  static Color get deepAnchor => AppColors.deepAnchor;
+  static const Color warmHearth = AppColors.warmHearth;
+  static const Color cardWhite = AppColors.cardWhite;
 
   // Flood severity — matches api.py's flood_risk levels: Low/Moderate/High/Severe
   static const Color safe = Color(0xFF22C55E);
@@ -26,7 +34,7 @@ class FloodColors {
   static const Color dangerBg = Color(0xFFFEF2F2);
   static const Color severeBg = Color(0xFFFEE2E2);
 
-  static const LinearGradient headerGradient = LinearGradient(
+  static LinearGradient get headerGradient => LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [heritagePurple, deepAnchor],
@@ -51,11 +59,13 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
   ColorScheme? _cs;
 
   AppColorScheme get _colors => AppColors.of(context);
-  Color get _scaffoldBg => _isDark ? AppColors.dark.background  : AppColors.warmHearth;
-  Color get _cardBg     => _isDark ? AppColors.dark.cardSurface : AppColors.cardWhite;
-  Color get _titleText  => _colors.textPrimary;
-  Color get _bodyText   => _colors.textSecondary;
-  Color get _mutedText  => _colors.textMuted;
+  Color get _scaffoldBg =>
+      _isDark ? AppColors.dark.background : AppColors.warmHearth;
+  Color get _cardBg =>
+      _isDark ? AppColors.dark.cardSurface : AppColors.cardWhite;
+  Color get _titleText => _colors.textPrimary;
+  Color get _bodyText => _colors.textSecondary;
+  Color get _mutedText => _colors.textMuted;
 
   final RefreshController _refreshController = RefreshController();
   final AiTriageService _ai = AiTriageService();
@@ -67,6 +77,16 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
   // rather than pretending there's a value.
   RainRiskResult? _rainRisk;
   bool _isLoadingRainRisk = true;
+
+  // 7-day daily rain forecast from Open-Meteo (see WeatherRepository). This
+  // powers the "Rain Forecast (7-Day water-level outlook)" panel below.
+  // Independent of the ML backend, so it still renders even when the
+  // /weather/rain-risk endpoint is unavailable. Null while loading or if
+  // Open-Meteo couldn't be reached — _buildRainForecastSection() shows an
+  // honest loading/unavailable state rather than invented numbers.
+  final WeatherRepository _weatherRepo = const WeatherRepository();
+  WeatherForecastData? _forecast;
+  bool _isLoadingForecast = true;
 
   // NOTE — _alerts and _safetyTips below are still placeholder/mock
   // data. Nothing in api.py provides per-station river-monitoring
@@ -80,6 +100,7 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
     super.initState();
     _initMockData();
     _fetchRainRisk();
+    _fetchForecast();
   }
 
   Future<void> _fetchRainRisk() async {
@@ -89,6 +110,19 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
     setState(() {
       _rainRisk = result;
       _isLoadingRainRisk = false;
+    });
+  }
+
+  /// Pulls the 7-day daily rain forecast for the assigned Milaor location.
+  /// Returns null on any failure (offline, no coordinates) — the UI then
+  /// shows an honest "unavailable" state, never placeholder values.
+  Future<void> _fetchForecast() async {
+    if (mounted) setState(() => _isLoadingForecast = true);
+    final data = await _weatherRepo.fetchForecast(assignedLocation);
+    if (!mounted) return;
+    setState(() {
+      _forecast = data;
+      _isLoadingForecast = false;
     });
   }
 
@@ -164,7 +198,10 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
   }
 
   void _onRefresh() async {
-    await _fetchRainRisk();
+    await Future.wait([
+      _fetchRainRisk(),
+      _fetchForecast(),
+    ]);
     _refreshController.refreshCompleted();
   }
 
@@ -192,6 +229,8 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
                   _buildHeroStatusCard(),
                   SizedBox(height: 24.h),
                   _buildQuickStatsRow(),
+                  SizedBox(height: 24.h),
+                  _buildRainForecastSection(),
                   SizedBox(height: 24.h),
                   _buildForecastSection(),
                   SizedBox(height: 24.h),
@@ -231,7 +270,7 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
       backgroundColor: FloodColors.heritagePurple,
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
-          decoration: const BoxDecoration(gradient: FloodColors.headerGradient),
+          decoration: BoxDecoration(gradient: FloodColors.headerGradient),
           child: SafeArea(
             child: Padding(
               padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 0),
@@ -251,7 +290,8 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
                               style: GoogleFonts.poppins(
                                 fontSize: 12.sp,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.neutralWhite.withValues(alpha: 0.54),
+                                color: AppColors.neutralWhite
+                                    .withValues(alpha: 0.54),
                                 letterSpacing: 3,
                               ),
                             ),
@@ -501,8 +541,8 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
               height: 32.w,
               child: CircularProgressIndicator(
                 strokeWidth: 3,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                    FloodColors.heritagePurple),
+                valueColor:
+                    AlwaysStoppedAnimation<Color>(FloodColors.heritagePurple),
               ),
             )
           else
@@ -511,7 +551,8 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(fontSize: 13.sp, color: _mutedText, height: 1.5),
+            style: GoogleFonts.inter(
+                fontSize: 13.sp, color: _mutedText, height: 1.5),
           ),
         ],
       ),
@@ -924,7 +965,8 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
                       width: 42.w,
                       height: 42.w,
                       decoration: BoxDecoration(
-                        color: FloodColors.heritagePurple.withValues(alpha: 0.08),
+                        color:
+                            FloodColors.heritagePurple.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(12.r),
                       ),
                       child: Icon(
@@ -1034,7 +1076,8 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.bolt_rounded, color: AppColors.warning, size: 24),
+              const Icon(Icons.bolt_rounded,
+                  color: AppColors.warning, size: 24),
               SizedBox(width: 8.w),
               Text(
                 'EMERGENCY ACTIONS',
@@ -1195,7 +1238,8 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
             _buildDetailRow(
                 'Station', alert['station'], FloodColors.heritagePurple),
             SizedBox(height: 12.h),
-            _buildDetailRow('Last Updated', alert['updated'], AppColors.neutralGray500),
+            _buildDetailRow(
+                'Last Updated', alert['updated'], AppColors.neutralGray500),
             SizedBox(height: 20.h),
             Text(
               'Residents in this area are advised to monitor water levels and follow safety guidelines issued by MDRRMO.',
