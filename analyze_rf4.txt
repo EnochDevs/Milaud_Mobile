@@ -1,6 +1,0 @@
-﻿Analyzing rain_forecast, rain_forecast_provider.dart, rain_forecast...
-
-warning - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:20:8 - Unused import: '../../../features/rain_forecast/types.dart'. Try removing the import directive. - unused_import
-   info - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1244:13 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
-
-2 issues found.

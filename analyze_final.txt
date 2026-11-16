@@ -1,7 +1,0 @@
-﻿Analyzing flood_alert_screen.dart, rain_forecast, rain_forecast, rain_forecast_provider.dart...
-
-   info - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1242:30 - Unnecessary escape in string literal. Remove the '\' escape. - unnecessary_string_escapes
-   info - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1244:13 - Unnecessary escape in string literal. Remove the '\' escape. - unnecessary_string_escapes
-   info - lib\screens\app_features\rain_forecast\rain_forecast_screen.dart:1244:17 - Unnecessary escape in string literal. Remove the '\' escape. - unnecessary_string_escapes
-
-3 issues found.

@@ -1,50 +1,69 @@
-// ignore_for_file: unused_field, deprecated_member_use
-
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:pull_to_refresh/pull_to_refresh.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../../../theme/app_theme.dart';
 import '../../../services/ai_triage_service.dart';
-// 7-day rain forecast (Open-Meteo). This feature deliberately reports
-// rainfall (mm) + probability only — it never fabricates a river-gauge
-// water level in meters (see weather_risk_models.dart's design contract).
 import '../../../features/rain_forecast/repository/weather_repository.dart';
 import '../../../features/rain_forecast/models/weather_data_models.dart';
 import '../../../features/rain_forecast/types.dart';
 import '../rain_forecast/rain_forecast_screen.dart';
 
-// ─── BRAND PALETTE — delegates to AppColors (single source of truth) ───
+// ============================================================
+// FLOOD COLORS
+// ============================================================
+
 class FloodColors {
   static Color get heritagePurple => AppColors.heritagePurple;
   static Color get riverFlow => AppColors.riverFlow;
   static Color get deepAnchor => AppColors.deepAnchor;
-  static const Color warmHearth = AppColors.warmHearth;
-  static const Color cardWhite = AppColors.cardWhite;
 
-  // Flood severity — matches api.py's flood_risk levels: Low/Moderate/High/Severe
+  // These are getters because the AppColors values may not be const.
+  static Color get warmHearth => AppColors.warmHearth;
+  static Color get cardWhite => AppColors.cardWhite;
+
+  // Philippine blue fallback.
+  // This avoids depending on AppColors.philippineBlue,
+  // which does not exist in the current AppColors class.
+  static const Color philippineBlue = Color(0xFF0056A3);
+
+  // Flood severity colors.
   static const Color safe = Color(0xFF22C55E);
   static const Color alert = Color(0xFFF59E0B);
   static const Color danger = Color(0xFFEF4444);
   static const Color severe = Color(0xFF991B1B);
+
   static const Color safeBg = Color(0xFFF0FDF4);
   static const Color alertBg = Color(0xFFFFFBEB);
   static const Color dangerBg = Color(0xFFFEF2F2);
   static const Color severeBg = Color(0xFFFEE2E2);
 
-  static LinearGradient get headerGradient => LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [heritagePurple, deepAnchor],
-      );
+  static LinearGradient get headerGradient {
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        heritagePurple,
+        deepAnchor,
+      ],
+    );
+  }
 
   static const LinearGradient safeGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF16A34A), Color(0xFF22C55E)],
+    colors: [
+      Color(0xFF16A34A),
+      Color(0xFF22C55E),
+    ],
   );
 }
+
+// ============================================================
+// SCREEN
+// ============================================================
 
 class FloodAlertScreen extends StatefulWidget {
   const FloodAlertScreen({super.key});
@@ -54,76 +73,153 @@ class FloodAlertScreen extends StatefulWidget {
 }
 
 class _FloodAlertScreenState extends State<FloodAlertScreen> {
+  // ==========================================================
+  // STATE
+  // ==========================================================
+
   bool _isDark = false;
-  ColorScheme? _cs;
 
   AppColorScheme get _colors => AppColors.of(context);
-  Color get _scaffoldBg =>
-      _isDark ? AppColors.dark.background : AppColors.warmHearth;
-  Color get _cardBg =>
-      _isDark ? AppColors.dark.cardSurface : AppColors.cardWhite;
+
+  Color get _scaffoldBg {
+    return _isDark ? AppColors.dark.background : AppColors.warmHearth;
+  }
+
+  Color get _cardBg {
+    return _isDark ? AppColors.dark.cardSurface : AppColors.cardWhite;
+  }
+
   Color get _titleText => _colors.textPrimary;
+
   Color get _bodyText => _colors.textSecondary;
+
   Color get _mutedText => _colors.textMuted;
 
+  // ==========================================================
+  // SERVICES
+  // ==========================================================
+
   final RefreshController _refreshController = RefreshController();
+
   final AiTriageService _ai = AiTriageService();
 
-  // Live data from your weather API (see api.py's GET /weather/rain-risk).
-  // Null while loading, or if the backend couldn't be reached / hasn't
-  // got OPENWEATHER_API_KEY configured — _buildHeroStatusCard() and
-  // _buildForecastSection() below show an honest "unavailable" state
-  // rather than pretending there's a value.
+  final WeatherRepository _weatherRepo = const WeatherRepository();
+
+  // ==========================================================
+  // LIVE RAIN RISK
+  // ==========================================================
+
   RainRiskResult? _rainRisk;
+
   bool _isLoadingRainRisk = true;
 
-  // 7-day daily rain forecast from Open-Meteo (see WeatherRepository). This
-  // powers the "Rain Forecast (7-Day water-level outlook)" panel below.
-  // Independent of the ML backend, so it still renders even when the
-  // /weather/rain-risk endpoint is unavailable. Null while loading or if
-  // Open-Meteo couldn't be reached — _buildRainForecastSection() shows an
-  // honest loading/unavailable state rather than invented numbers.
-  final WeatherRepository _weatherRepo = const WeatherRepository();
+  // ==========================================================
+  // 7-DAY FORECAST
+  // ==========================================================
+
   WeatherForecastData? _forecast;
+
   bool _isLoadingForecast = true;
 
-  // NOTE — _alerts and _safetyTips below are still placeholder/mock
-  // data. Nothing in api.py provides per-station river-monitoring
-  // readings, so there's no real backend to wire these to yet.
+  // ==========================================================
+  // MOCK STATION / SAFETY DATA
+  // ==========================================================
+  //
+  // IMPORTANT:
+  // These are UI placeholder records.
+  // They are NOT real river-gauge measurements.
+  //
+
   late List<Map<String, dynamic>> _alerts;
+
   late List<Map<String, dynamic>> _safetyTips;
-  int _expandedTipIndex = -1;
+
+  // ==========================================================
+  // INIT
+  // ==========================================================
 
   @override
   void initState() {
     super.initState();
+
     _initMockData();
+
     _fetchRainRisk();
+
     _fetchForecast();
   }
 
+  // ==========================================================
+  // FETCH RAIN RISK
+  // ==========================================================
+
   Future<void> _fetchRainRisk() async {
-    if (mounted) setState(() => _isLoadingRainRisk = true);
-    final result = await _ai.getRainRisk();
-    if (!mounted) return;
-    setState(() {
-      _rainRisk = result;
-      _isLoadingRainRisk = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoadingRainRisk = true;
+      });
+    }
+
+    try {
+      final result = await _ai.getRainRisk();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _rainRisk = result;
+        _isLoadingRainRisk = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _rainRisk = null;
+        _isLoadingRainRisk = false;
+      });
+    }
   }
 
-  /// Pulls the 7-day daily rain forecast for the assigned Milaor location.
-  /// Returns null on any failure (offline, no coordinates) — the UI then
-  /// shows an honest "unavailable" state, never placeholder values.
+  // ==========================================================
+  // FETCH 7-DAY FORECAST
+  // ==========================================================
+
   Future<void> _fetchForecast() async {
-    if (mounted) setState(() => _isLoadingForecast = true);
-    final data = await _weatherRepo.fetchForecast(assignedLocation);
-    if (!mounted) return;
-    setState(() {
-      _forecast = data;
-      _isLoadingForecast = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoadingForecast = true;
+      });
+    }
+
+    try {
+      final data = await _weatherRepo.fetchForecast(assignedLocation);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _forecast = data;
+        _isLoadingForecast = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _forecast = null;
+        _isLoadingForecast = false;
+      });
+    }
   }
+
+  // ==========================================================
+  // MOCK DATA
+  // ==========================================================
 
   void _initMockData() {
     _alerts = [
@@ -164,7 +260,7 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
           'Move to higher ground immediately.',
           'Avoid walking or driving through flood waters.',
           'Stay tuned to local news for updates.',
-          'Prepare emergency kit with food, water, and medicines.',
+          'Prepare an emergency kit with food, water, and medicines.',
         ],
       },
       {
@@ -190,68 +286,83 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
     ];
   }
 
+  // ==========================================================
+  // DISPOSE
+  // ==========================================================
+
   @override
   void dispose() {
     _refreshController.dispose();
+
     super.dispose();
   }
 
-  void _onRefresh() async {
-    await Future.wait([
-      _fetchRainRisk(),
-      _fetchForecast(),
-    ]);
-    _refreshController.refreshCompleted();
+  // ==========================================================
+  // REFRESH
+  // ==========================================================
+
+  Future<void> _onRefresh() async {
+    try {
+      await Future.wait([
+        _fetchRainRisk(),
+        _fetchForecast(),
+      ]);
+
+      _refreshController.refreshCompleted();
+    } catch (_) {
+      _refreshController.refreshFailed();
+    }
   }
+
+  // ==========================================================
+  // BUILD
+  // ==========================================================
 
   @override
   Widget build(BuildContext context) {
     _isDark = Theme.of(context).brightness == Brightness.dark;
-    _cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       backgroundColor: _scaffoldBg,
-      body: SmartRefresher(
-        controller: _refreshController,
-        onRefresh: _onRefresh,
-        header: WaterDropMaterialHeader(
-          backgroundColor: FloodColors.heritagePurple,
-          color: AppColors.neutralWhite,
-        ),
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            _buildSliverAppBar(),
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 40.h),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _buildHeroStatusCard(),
-                  SizedBox(height: 24.h),
-                  _buildQuickStatsRow(),
-                  SizedBox(height: 24.h),
-                  _buildRainForecastSection(),
-                  SizedBox(height: 24.h),
-                  _buildForecastSection(),
-                  SizedBox(height: 24.h),
-                  _buildSectionHeader(
-                      'Area Flood Alerts', Icons.location_on_rounded),
-                  SizedBox(height: 12.h),
-                  ..._alerts.asMap().entries.map(
-                      (e) => _buildAlertCard(e.value, e.key).animate().fadeIn(
-                            duration: 400.ms,
-                            delay: (100 * e.key).ms,
-                          )),
-                  SizedBox(height: 24.h),
-                  _buildSectionHeader(
-                      'Safety Information', Icons.info_outline_rounded),
-                  SizedBox(height: 12.h),
-                  ..._safetyTips
-                      .asMap()
-                      .entries
-                      .map((e) => _buildSafetyAccordion(e.value, e.key)),
-                  SizedBox(height: 24.h),
-                  _buildEmergencyActions(),
-                ]),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: SmartRefresher(
+                controller: _refreshController,
+                onRefresh: _onRefresh,
+                header: const WaterDropMaterialHeader(
+                  backgroundColor: Color(0xFF4C229C),
+                  color: Colors.white,
+                ),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(
+                    20.w,
+                    16.h,
+                    20.w,
+                    32.h,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeroStatusCard(),
+                      SizedBox(height: 20.h),
+                      _buildRiverStationsSection(),
+                      SizedBox(height: 20.h),
+                      _buildActiveAdvisoriesSection(),
+                      SizedBox(height: 20.h),
+                      _buildRainOutlookSection(),
+                      SizedBox(height: 20.h),
+                      _buildSafetyTipsSection(),
+                      SizedBox(height: 20.h),
+                      _buildEmergencyActions(),
+                      SizedBox(height: 20.h),
+                      _buildAttributionCard(),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -260,160 +371,419 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
     );
   }
 
-  // ─── SLIVER APP BAR ────────────────────────────────────
-  Widget _buildSliverAppBar() {
-    return SliverAppBar(
-      expandedHeight: 140.h,
-      pinned: true,
-      elevation: 0,
-      backgroundColor: FloodColors.heritagePurple,
-      flexibleSpace: FlexibleSpaceBar(
-        background: Container(
-          decoration: BoxDecoration(gradient: FloodColors.headerGradient),
-          child: SafeArea(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Row(
-                    children: [
-                      SizedBox(width: 16.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'FLOOD MONITORING',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12.sp,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.neutralWhite
-                                    .withValues(alpha: 0.54),
-                                letterSpacing: 3,
-                              ),
-                            ),
-                            Text(
-                              'Milaor Alert System',
-                              style: GoogleFonts.poppins(
-                                fontSize: 22.sp,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.neutralWhite,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // _buildRefreshButton(),
-                    ],
-                  ),
-                ],
+  // ==========================================================
+  // HEADER
+  // ==========================================================
+
+  Widget _buildHeader() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        20.w,
+        10.h,
+        20.w,
+        22.h,
+      ),
+      decoration: BoxDecoration(
+        gradient: FloodColors.headerGradient,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(30),
+          bottomRight: Radius.circular(30),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: FloodColors.deepAnchor.withValues(alpha: 0.35),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 10.w,
+                height: 34.h,
+                decoration: BoxDecoration(
+                  color: AppColors.philippineGold,
+                  borderRadius: BorderRadius.circular(6.r),
+                ),
               ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FLOOD ALERT',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white.withValues(alpha: 0.8),
+                        letterSpacing: 2.6,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Milaor, Camarines Sur',
+                      style: GoogleFonts.poppins(
+                        fontSize: 21.sp,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.15,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      'Rain-risk monitoring and flood preparedness',
+                      style: GoogleFonts.inter(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.white.withValues(alpha: 0.9),
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _buildHeaderAction(),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================================
+  // HEADER ACTION
+  // ==========================================================
+
+  Widget _buildHeaderAction() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _outlineChip(
+          Icons.refresh_rounded,
+          'Refresh',
+          onTap: () {
+            _onRefresh();
+          },
+        ),
+        SizedBox(width: 8.w),
+        IconButton(
+          icon: const Icon(
+            Icons.notifications_none_rounded,
+          ),
+          color: Colors.white,
+          tooltip: 'Notifications',
+          onPressed: () {
+            _showMessage(
+              context,
+              'Alert notifications opened',
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // OUTLINE CHIP
+  // ==========================================================
+
+  Widget _outlineChip(
+    IconData icon,
+    String label, {
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14.r),
+        onTap: onTap,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: 10.w,
+            vertical: 9.h,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.35),
+              width: 1,
             ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 17.sp,
+                color: Colors.white,
+              ),
+              SizedBox(width: 6.w),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  // Maps api.py's flood_risk levels onto this screen's color language.
-  Color _riskColor(String risk) => switch (risk.toLowerCase()) {
-        'low' => FloodColors.safe,
-        'moderate' => FloodColors.alert,
-        'high' => FloodColors.danger,
-        'severe' => FloodColors.severe,
-        _ => FloodColors.heritagePurple,
-      };
+  // ==========================================================
+  // STATUS COLOR
+  // ==========================================================
 
-  IconData _riskIcon(String risk) => switch (risk.toLowerCase()) {
-        'low' => Icons.check_circle_rounded,
-        'moderate' => Icons.warning_amber_rounded,
-        'high' => Icons.dangerous_rounded,
-        'severe' => Icons.report_rounded,
-        _ => Icons.info_rounded,
-      };
+  Color _statusColor(String risk) {
+    switch (risk.toLowerCase()) {
+      case 'low':
+      case 'normal':
+        return FloodColors.safe;
 
-  // ─── HERO STATUS CARD ──────────────────────────────────
-  // FIX — used to show a fabricated "river level in meters vs a danger
-  // threshold" gauge with no real data behind it at all. Now driven by
-  // your weather API's live rain-risk snapshot (see _fetchRainRisk()) —
-  // shows a loading/unavailable state honestly instead of a fake number
-  // when that hasn't succeeded yet.
+      case 'moderate':
+      case 'alert':
+        return FloodColors.alert;
+
+      case 'high':
+        return FloodColors.danger;
+
+      case 'severe':
+        return FloodColors.severe;
+
+      default:
+        return FloodColors.heritagePurple;
+    }
+  }
+
+  // ==========================================================
+  // STATUS BACKGROUND
+  // ==========================================================
+
+  Color _statusBg(String risk) {
+    switch (risk.toLowerCase()) {
+      case 'low':
+      case 'normal':
+        return FloodColors.safeBg;
+
+      case 'moderate':
+      case 'alert':
+        return FloodColors.alertBg;
+
+      case 'high':
+        return FloodColors.dangerBg;
+
+      case 'severe':
+        return FloodColors.severeBg;
+
+      default:
+        return FloodColors.heritagePurple.withValues(alpha: 0.1);
+    }
+  }
+
+  // ==========================================================
+  // STATUS ICON
+  // ==========================================================
+
+  IconData _statusIcon(String risk) {
+    switch (risk.toLowerCase()) {
+      case 'low':
+      case 'normal':
+        return Icons.check_circle_rounded;
+
+      case 'moderate':
+      case 'alert':
+        return Icons.warning_amber_rounded;
+
+      case 'high':
+        return Icons.dangerous_rounded;
+
+      case 'severe':
+        return Icons.report_rounded;
+
+      default:
+        return Icons.info_rounded;
+    }
+  }
+
+  // ==========================================================
+  // HERO STATUS CARD
+  // ==========================================================
+
   Widget _buildHeroStatusCard() {
+    // --------------------------------------------------------
+    // LOADING
+    // --------------------------------------------------------
+
     if (_isLoadingRainRisk) {
-      return _buildHeroPlaceholder(
-        icon: Icons.cloud_sync_rounded,
-        message: 'Checking live rain forecast…',
-        showSpinner: true,
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(24.w),
+        decoration: BoxDecoration(
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(26.r),
+          border: Border.all(
+            color: _colors.border,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(
+              color: AppColors.heritagePurple,
+              strokeWidth: 3,
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'Checking live rain forecast…',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13.sp,
+                color: _mutedText,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       );
     }
+
+    // --------------------------------------------------------
+    // UNAVAILABLE
+    // --------------------------------------------------------
+
     final rainRisk = _rainRisk;
+
     if (rainRisk == null) {
-      return _buildHeroPlaceholder(
-        icon: Icons.cloud_off_rounded,
-        message: 'Live rain forecast unavailable right now.\n'
-            'Make sure the triage API is running and OPENWEATHER_API_KEY is configured.',
-        showSpinner: false,
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(24.w),
+        decoration: BoxDecoration(
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(26.r),
+          border: Border.all(
+            color: _colors.border,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_rounded,
+              size: 48.sp,
+              color: _mutedText,
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'Live rain forecast unavailable right now.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w700,
+                color: _titleText,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'Make sure the triage API is running and '
+              'OPENWEATHER_API_KEY is configured.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13.sp,
+                color: _mutedText,
+                height: 1.5,
+              ),
+            ),
+            SizedBox(height: 18.h),
+            OutlinedButton.icon(
+              onPressed: _fetchRainRisk,
+              icon: const Icon(
+                Icons.refresh_rounded,
+              ),
+              label: const Text('Try Again'),
+            ),
+          ],
+        ),
       );
     }
+
+    // --------------------------------------------------------
+    // DATA
+    // --------------------------------------------------------
 
     final statusText = rainRisk.floodRisk;
-    // 50mm/12h is api.py's own "Severe" threshold (get_rain_forecast()) —
-    // reused here so the gauge fills at the same point the backend
-    // itself calls the situation severe.
-    final percentage = (rainRisk.expectedRainMmNext12h / 50).clamp(0.0, 1.0);
-    final statusColor = _riskColor(statusText);
-    final glowColor = statusColor.withValues(alpha: 0.3);
-    final statusIcon = _riskIcon(statusText);
+
+    final statusColor = _statusColor(statusText);
+
+    final statusIcon = _statusIcon(statusText);
+
+    final isSevere = statusText.toLowerCase() == 'high' ||
+        statusText.toLowerCase() == 'severe';
+
+    final rainMm = rainRisk.expectedRainMmNext12h;
+
+    final progress = (rainMm / 50).clamp(0.0, 1.0);
 
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(24.w),
       decoration: BoxDecoration(
         color: _cardBg,
-        borderRadius: BorderRadius.circular(28.r),
+        borderRadius: BorderRadius.circular(26.r),
+        border: Border.all(
+          color: _colors.border,
+        ),
         boxShadow: [
           BoxShadow(
-            color: FloodColors.heritagePurple.withValues(alpha: 0.08),
-            blurRadius: 30,
-            offset: const Offset(0, 12),
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ─── Status Badge & Title ───
+          // STATUS BADGE
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Current Status',
-                style: GoogleFonts.poppins(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w600,
-                  color: _bodyText,
-                ),
-              ),
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 14.w,
+                  vertical: 8.h,
+                ),
                 decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(100.r),
-                  border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14.r),
+                  border: Border.all(
+                    color: statusColor.withValues(alpha: 0.45),
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(statusIcon, color: statusColor, size: 18.sp),
-                    SizedBox(width: 6.w),
+                    Icon(
+                      statusIcon,
+                      color: statusColor,
+                      size: 20.sp,
+                    ),
+                    SizedBox(width: 8.w),
                     Text(
                       statusText.toUpperCase(),
                       style: GoogleFonts.poppins(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w800,
                         color: statusColor,
-                        letterSpacing: 1,
+                        letterSpacing: 1.2,
                       ),
                     ),
                   ],
@@ -421,338 +791,424 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
               ),
             ],
           ),
-          SizedBox(height: 28.h),
-          // ─── Circular Gauge ───
-          SizedBox(
-            width: 170.w,
-            height: 170.w,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 170.w,
-                  height: 170.w,
-                  child: CircularProgressIndicator(
-                    value: percentage,
-                    strokeWidth: 12.w,
-                    backgroundColor: AppColors.neutralGray200,
-                    valueColor: AlwaysStoppedAnimation(statusColor),
-                    strokeCap: StrokeCap.round,
-                  ),
-                ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '${rainRisk.expectedRainMmNext12h.toStringAsFixed(0)}mm',
-                      style: GoogleFonts.poppins(
-                        fontSize: 38.sp,
-                        fontWeight: FontWeight.w800,
-                        color: _titleText,
-                        height: 1,
-                      ),
-                    ),
-                    SizedBox(height: 2.h),
-                    Text(
-                      'expected, next 12h',
-                      style: GoogleFonts.inter(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w500,
-                        color: _mutedText,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+
+          SizedBox(height: 8.h),
+
+          Text(
+            'Current flood-risk status',
+            style: GoogleFonts.inter(
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w500,
+              color: _mutedText,
             ),
           ),
-          SizedBox(height: 24.h),
-          // ─── Status Text — the API's own recommended_action, not a
-          // canned message, so it actually reflects this situation ───
+
+          SizedBox(height: 22.h),
+
+          // MAIN RAIN METRIC
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                rainMm.toStringAsFixed(1),
+                style: GoogleFonts.poppins(
+                  fontSize: 40.sp,
+                  fontWeight: FontWeight.w900,
+                  color: _titleText,
+                  height: 1,
+                ),
+              ),
+              SizedBox(width: 6.w),
+              Text(
+                'mm',
+                style: GoogleFonts.inter(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w600,
+                  color: _mutedText,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.w,
+                  vertical: 8.h,
+                ),
+                decoration: BoxDecoration(
+                  color: _statusBg(
+                    statusText,
+                  ),
+                  borderRadius: BorderRadius.circular(10.r),
+                  border: Border.all(
+                    color: statusColor.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Text(
+                  'next 12h',
+                  style: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          SizedBox(height: 14.h),
+
+          // RAIN PROGRESS
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10.r),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8.h,
+              backgroundColor: _colors.border.withValues(alpha: 0.6),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                statusColor,
+              ),
+            ),
+          ),
+
+          SizedBox(height: 6.h),
+
+          Text(
+            'Rain accumulation vs severe threshold (50 mm)',
+            style: GoogleFonts.inter(
+              fontSize: 11.5.sp,
+              fontWeight: FontWeight.w500,
+              color: _mutedText,
+            ),
+          ),
+
+          SizedBox(height: 22.h),
+
+          // RECOMMENDED ACTION
           Container(
             width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
+            padding: EdgeInsets.all(16.w),
             decoration: BoxDecoration(
               color: statusColor.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(16.r),
+              borderRadius: BorderRadius.circular(18.r),
+              border: Border.all(
+                color: statusColor.withValues(alpha: 0.3),
+              ),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: EdgeInsets.only(top: 5.h),
-                  child: Container(
-                    width: 8.w,
-                    height: 8.w,
-                    decoration: BoxDecoration(
-                      color: statusColor,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                            color: glowColor, blurRadius: 8, spreadRadius: 2),
-                      ],
-                    ),
-                  ),
+                Icon(
+                  statusIcon,
+                  color: statusColor,
+                  size: 22.sp,
                 ),
-                SizedBox(width: 10.w),
+                SizedBox(width: 12.w),
                 Expanded(
-                  child: Text(
-                    rainRisk.recommendedAction,
-                    style: GoogleFonts.inter(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
-                      color: _titleText,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Recommended action',
+                        style: GoogleFonts.inter(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        rainRisk.recommendedAction,
+                        style: GoogleFonts.inter(
+                          fontSize: 14.5.sp,
+                          fontWeight: FontWeight.w600,
+                          color: _titleText,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.05, end: 0);
-  }
 
-  Widget _buildHeroPlaceholder({
-    required IconData icon,
-    required String message,
-    required bool showSpinner,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(vertical: 48.h, horizontal: 24.w),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(28.r),
-        boxShadow: [
-          BoxShadow(
-            color: FloodColors.heritagePurple.withValues(alpha: 0.08),
-            blurRadius: 30,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          if (showSpinner)
-            SizedBox(
-              width: 32.w,
-              height: 32.w,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(FloodColors.heritagePurple),
-              ),
-            )
-          else
-            Icon(icon, size: 40.sp, color: _mutedText),
-          SizedBox(height: 16.h),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-                fontSize: 13.sp, color: _mutedText, height: 1.5),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── QUICK STATS ROW ───────────────────────────────────
-  // FIX — 'Trend' used to be a fabricated 'stable' string with nothing
-  // behind it; api.py doesn't provide a trend either, so this now shows
-  // the one thing it DOES provide that the hero card doesn't already
-  // cover — the evacuation advisory flag. 'Rainfall' and 'Last Update'
-  // are now the real values from _rainRisk instead of hardcoded ones.
-  Widget _buildQuickStatsRow() {
-    final rainRisk = _rainRisk;
-    return Row(
-      children: [
-        Expanded(
-            child: _buildStatCard(
-          icon: rainRisk?.evacuationAdvisory == true
-              ? Icons.directions_run_rounded
-              : Icons.home_rounded,
-          label: 'Advisory',
-          value: rainRisk == null
-              ? '—'
-              : (rainRisk.evacuationAdvisory ? 'EVACUATE' : 'STAY PUT'),
-          color: rainRisk?.evacuationAdvisory == true
-              ? FloodColors.danger
-              : FloodColors.riverFlow,
-        )),
-        SizedBox(width: 12.w),
-        Expanded(
-            child: _buildStatCard(
-          icon: Icons.access_time_rounded,
-          label: 'Checked',
-          value: rainRisk == null ? '—' : _formatTime(rainRisk.checkedAt),
-          color: FloodColors.heritagePurple,
-        )),
-        SizedBox(width: 12.w),
-        Expanded(
-            child: _buildStatCard(
-          icon: Icons.water_drop_rounded,
-          label: 'Rainfall (12h)',
-          value: rainRisk == null
-              ? '—'
-              : '${rainRisk.expectedRainMmNext12h.toStringAsFixed(0)}mm',
-          color: const Color(0xFF0EA5E9),
-        )),
-      ],
-    );
-  }
-
-  Widget _buildRainForecastSection() {
-    return InkWell(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const RainForecastScreen()),
-      ),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFFE9E1F5),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.cloudy_snowing,
-                  color: Color(0xFF643EB5),
-                  size: 26,
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Text(
-                    'Rain Forecast',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF24005B),
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1EBFC),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Text(
-                    'Forecast',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF643EB5),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Monitor rainfall conditions to help you prepare for possible flooding.',
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.5,
-                color: Color(0xFF6B6575),
-              ),
-            ),
-            const SizedBox(height: 16),
+          // SEVERE ADVISORY
+          if (isSevere) ...[
+            SizedBox(height: 16.h),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(14),
+              padding: EdgeInsets.all(16.w),
               decoration: BoxDecoration(
-                color: const Color(0xFFF7F3FD),
-                borderRadius: BorderRadius.circular(12),
+                color: FloodColors.severeBg,
+                borderRadius: BorderRadius.circular(18.r),
+                border: Border.all(
+                  color: FloodColors.severe.withValues(alpha: 0.4),
+                ),
               ),
-              child: const Row(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
-                    Icons.info_outline,
-                    color: Color(0xFF643EB5),
-                    size: 22,
+                    Icons.warning_amber_rounded,
+                    color: FloodColors.severe,
+                    size: 22.sp,
                   ),
-                  SizedBox(width: 10),
+                  SizedBox(width: 12.w),
                   Expanded(
-                    child: Text(
-                      'Live rainfall data is not connected yet. '
-                      'Please monitor official PAGASA weather advisories.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.5,
-                        color: Color(0xFF4C229C),
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Evacuation advisory active',
+                          style: GoogleFonts.inter(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w800,
+                            color: FloodColors.severe,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Prepare to move to higher ground. '
+                          'Follow official MDRRMO instructions.',
+                          style: GoogleFonts.inter(
+                            fontSize: 13.5.sp,
+                            fontWeight: FontWeight.w600,
+                            color: _titleText,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
           ],
-        ),
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(
+          duration: 500.ms,
+        )
+        .slideY(
+          begin: 0.06,
+          end: 0,
+        );
+  }
+
+  // ==========================================================
+  // SECTION TITLE
+  // ==========================================================
+
+  Widget _sectionTitle(
+    String title,
+    IconData icon,
+  ) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 10.h),
+      child: Row(
+        children: [
+          Container(
+            width: 20.w,
+            height: 20.w,
+            decoration: BoxDecoration(
+              color: FloodColors.heritagePurple.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6.r),
+            ),
+            child: Icon(
+              icon,
+              size: 14.sp,
+              color: FloodColors.heritagePurple,
+            ),
+          ),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Text(
+              title,
+              style: GoogleFonts.poppins(
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w800,
+                color: _titleText,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildStatCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
+  // ==========================================================
+  // RIVER STATIONS
+  // ==========================================================
+
+  Widget _buildRiverStationsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          'River & Water Stations',
+          Icons.water_drop_rounded,
+        ),
+        SizedBox(height: 12.h),
+        ..._alerts.asMap().entries.map(
+          (entry) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: 12.h,
+              ),
+              child: _buildStationCard(
+                entry.value,
+                entry.key,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // STATION CARD
+  // ==========================================================
+
+  Widget _buildStationCard(
+    Map<String, dynamic> station,
+    int index,
+  ) {
+    final status = station['level'] as String? ?? 'Normal';
+
+    final color = _statusColor(status);
+
     return Container(
+      width: double.infinity,
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
         color: _cardBg,
-        borderRadius: BorderRadius.circular(20.r),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.neutralBlack.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(
+          color: _colors.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      station['station'] as String? ?? 'Station',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14.5.sp,
+                        fontWeight: FontWeight.w700,
+                        color: _titleText,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      station['title'] as String? ?? '',
+                      style: GoogleFonts.inter(
+                        fontSize: 12.5.sp,
+                        color: _mutedText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 10.w,
+                  vertical: 6.h,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10.r),
+                  border: Border.all(
+                    color: color.withValues(alpha: 0.45),
+                  ),
+                ),
+                child: Text(
+                  status.toUpperCase(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 10.5.sp,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 14.h),
+          Row(
+            children: [
+              _buildStationMetric(
+                Icons.info_outline_rounded,
+                status,
+                'Status',
+              ),
+              SizedBox(width: 24.w),
+              _buildStationMetric(
+                Icons.access_time_rounded,
+                station['updated'] as String? ?? '—',
+                'Updated',
+              ),
+            ],
           ),
         ],
       ),
+    )
+        .animate()
+        .fadeIn(
+          duration: 400.ms,
+        )
+        .slideY(
+          begin: 0.04,
+          end: 0,
+          delay: (100 * index).ms,
+        );
+  }
+
+  // ==========================================================
+  // STATION METRIC
+  // ==========================================================
+
+  Widget _buildStationMetric(
+    IconData icon,
+    String value,
+    String label,
+  ) {
+    return Expanded(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40.w,
-            height: 40.w,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12.r),
-            ),
-            child: Icon(icon, color: color, size: 20.sp),
+          Row(
+            children: [
+              Icon(
+                icon,
+                size: 15.sp,
+                color: _mutedText,
+              ),
+              SizedBox(width: 6.w),
+              Expanded(
+                child: Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w700,
+                    color: _titleText,
+                  ),
+                ),
+              ),
+            ],
           ),
-          SizedBox(height: 10.h),
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 18.sp,
-              fontWeight: FontWeight.w700,
-              color: _titleText,
-            ),
-          ),
-          SizedBox(height: 2.h),
+          SizedBox(height: 3.h),
           Text(
             label,
             style: GoogleFonts.inter(
@@ -765,418 +1221,562 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
     );
   }
 
-  // ─── FORECAST SECTION ──────────────────────────────────
-  // FIX — used to render a fabricated hourly river-level bar chart
-  // (Now/3h/6h/12h/24h) with invented numbers behind every point.
-  // api.py's /weather/rain-risk gives one current snapshot, not an
-  // hourly timeline, so this is now a "Live Rain Risk Assessment" panel
-  // showing the real fields that snapshot actually has — an evacuation
-  // badge when relevant, and the backend's own disclaimer note — instead
-  // of pretending to have forecast granularity that doesn't exist.
-  Widget _buildForecastSection() {
-    final rainRisk = _rainRisk;
-    if (rainRisk == null) return const SizedBox.shrink();
+  // ==========================================================
+  // ACTIVE ADVISORIES
+  // ==========================================================
 
-    final riskColor = _riskColor(rainRisk.floodRisk);
+  Widget _buildActiveAdvisoriesSection() {
+    final active = _alerts
+        .where(
+          (alert) =>
+              (alert['level'] as String? ?? '').toLowerCase() != 'normal',
+        )
+        .toList();
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(24.w),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(28.r),
-        boxShadow: [
-          BoxShadow(
-            color: FloodColors.heritagePurple.withValues(alpha: 0.06),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Live Rain Risk Assessment',
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w700,
-                    color: _titleText,
-                  ),
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                decoration: BoxDecoration(
-                  color: _scaffoldBg,
-                  borderRadius: BorderRadius.circular(100.r),
-                ),
-                child: Text(
-                  'ML weather API',
-                  style: GoogleFonts.inter(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                    color: FloodColors.heritagePurple,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 18.h),
-          if (rainRisk.evacuationAdvisory) ...[
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-              decoration: BoxDecoration(
-                color: FloodColors.danger.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(14.r),
-                border: Border.all(
-                    color: FloodColors.danger.withValues(alpha: 0.35)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.directions_run_rounded,
-                      color: FloodColors.danger, size: 20.sp),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: Text(
-                      'Evacuation advisory in effect',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w700,
-                        color: FloodColors.danger,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 16.h),
-          ],
-          Row(
-            children: [
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                decoration: BoxDecoration(
-                  color: riskColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(100.r),
-                ),
-                child: Text(
-                  '${rainRisk.floodRisk.toUpperCase()} RISK',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w700,
-                    color: riskColor,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Text(
-                  '${rainRisk.expectedRainMmNext12h.toStringAsFixed(0)}mm expected in the next 12h',
-                  style: GoogleFonts.inter(fontSize: 12.sp, color: _mutedText),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            rainRisk.note,
-            style: GoogleFonts.inter(
-                fontSize: 11.sp, color: _mutedText, height: 1.5),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── SECTION HEADER ────────────────────────────────────
-  Widget _buildSectionHeader(String title, IconData icon) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 36.w,
-          height: 36.w,
-          decoration: BoxDecoration(
-            color: FloodColors.heritagePurple.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10.r),
-          ),
-          child: Icon(icon, color: FloodColors.heritagePurple, size: 20.sp),
+        _sectionTitle(
+          'Active Flood Advisories',
+          Icons.notification_important_rounded,
         ),
-        SizedBox(width: 12.w),
-        Text(
-          title,
-          style: GoogleFonts.poppins(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.w700,
-            color: _titleText,
+        SizedBox(height: 12.h),
+        if (active.isEmpty)
+          _emptyState(
+            icon: Icons.check_circle_outline_rounded,
+            title: 'No active advisories',
+            subtitle:
+                'No advisory is currently reported by the available monitoring data.',
           ),
+        ...active.asMap().entries.map(
+          (entry) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: 12.h,
+              ),
+              child: _buildAdvisoryCard(
+                entry.value,
+                entry.key,
+              ),
+            );
+          },
         ),
       ],
     );
   }
 
-  // ─── ALERT CARD ────────────────────────────────────────
-  Widget _buildAlertCard(Map<String, dynamic> alert, int index) {
-    final color = alert['color'] as Color;
-    final bgColor = alert['bgColor'] as Color;
+  // ==========================================================
+  // ADVISORY CARD
+  // ==========================================================
+
+  Widget _buildAdvisoryCard(
+    Map<String, dynamic> advisory,
+    int index,
+  ) {
+    final status = advisory['level'] as String? ?? 'Normal';
+
+    final color = _statusColor(status);
 
     return Container(
-      margin: EdgeInsets.only(bottom: 12.h),
+      width: double.infinity,
+      padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(
+          color: color.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 14.w,
+            height: 14.w,
+            margin: EdgeInsets.only(top: 3.h),
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  advisory['title'] as String? ?? 'Advisory',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w700,
+                    color: _titleText,
+                  ),
+                ),
+                SizedBox(height: 3.h),
+                Text(
+                  'Station reports '
+                  '${status.toLowerCase()} conditions — '
+                  '${advisory['updated'] as String? ?? ''}',
+                  style: GoogleFonts.inter(
+                    fontSize: 12.5.sp,
+                    color: _mutedText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 20.sp,
+            color: _mutedText,
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
+    )
+        .animate()
+        .fadeIn(
+          duration: 400.ms,
+        )
+        .slideY(
+          begin: 0.04,
+          end: 0,
+          delay: (100 * index).ms,
+        );
+  }
+
+  // ==========================================================
+  // EMPTY STATE
+  // ==========================================================
+
+  Widget _emptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(
+        vertical: 40.h,
+        horizontal: 20.w,
+      ),
+      decoration: BoxDecoration(
+        color: _cardBg,
         borderRadius: BorderRadius.circular(20.r),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20.r),
-          onTap: () => _showAlertDetails(alert),
-          child: Padding(
-            padding: EdgeInsets.all(16.w),
-            child: Row(
+        border: Border.all(
+          color: _colors.border,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            size: 48.sp,
+            color: _mutedText.withValues(alpha: 0.5),
+          ),
+          SizedBox(height: 14.h),
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w700,
+              color: _titleText,
+            ),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 13.5.sp,
+              color: _mutedText,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================================
+  // RAIN OUTLOOK
+  // ==========================================================
+
+  Widget _buildRainOutlookSection() {
+    final rainRisk = _rainRisk;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          '7-Day Rain Outlook',
+          Icons.water_drop_rounded,
+        ),
+        SizedBox(height: 12.h),
+        InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const RainForecastScreen(),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(18.r),
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(18.w),
+            decoration: BoxDecoration(
+              color: _cardBg,
+              borderRadius: BorderRadius.circular(18.r),
+              border: Border.all(
+                color: _colors.border,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Status indicator bar
-                Container(
-                  width: 4.w,
-                  height: 56.h,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(2.r),
-                  ),
-                ),
-                SizedBox(width: 14.w),
-                // Icon
-                Container(
-                  width: 46.w,
-                  height: 46.w,
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    borderRadius: BorderRadius.circular(14.r),
-                  ),
-                  child: Icon(alert['icon'] as IconData,
-                      color: color, size: 22.sp),
-                ),
-                SizedBox(width: 14.w),
-                // Text content
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        alert['title'],
-                        style: GoogleFonts.poppins(
-                          fontSize: 15.sp,
-                          fontWeight: FontWeight.w600,
-                          color: _titleText,
+                // TOP
+                Row(
+                  children: [
+                    Container(
+                      width: 44.w,
+                      height: 44.w,
+                      decoration: BoxDecoration(
+                        color: FloodColors.philippineBlue.withValues(
+                          alpha: 0.1,
+                        ),
+                        borderRadius: BorderRadius.circular(
+                          14.r,
                         ),
                       ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        alert['station'],
-                        style: GoogleFonts.inter(
-                          fontSize: 12.sp,
-                          color: _mutedText,
-                        ),
+                      child: Icon(
+                        Icons.cloudy_snowing,
+                        color: FloodColors.philippineBlue,
+                        size: 26.sp,
                       ),
-                      SizedBox(height: 4.h),
-                      Row(
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildStatusDot(color),
-                          SizedBox(width: 6.w),
                           Text(
-                            '${alert['level']} · ${alert['updated']}',
+                            'Weather Forecast',
+                            style: GoogleFonts.poppins(
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.w800,
+                              color: _titleText,
+                            ),
+                          ),
+                          SizedBox(height: 2.h),
+                          Text(
+                            'Open-Meteo • 7-day outlook',
                             style: GoogleFonts.inter(
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.w500,
-                              color: color,
+                              fontSize: 11.5.sp,
+                              color: _mutedText,
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-                // Chevron
-                Icon(Icons.chevron_right_rounded,
-                    color: _mutedText, size: 24.sp),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusDot(Color color) {
-    return Container(
-      width: 8.w,
-      height: 8.w,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 6),
-        ],
-      ),
-    );
-  }
-
-  // ─── SAFETY ACCORDION ──────────────────────────────────
-  Widget _buildSafetyAccordion(Map<String, dynamic> tip, int index) {
-    final isExpanded = _expandedTipIndex == index;
-
-    return Container(
-      margin: EdgeInsets.only(bottom: 12.h),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(20.r),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.neutralBlack.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20.r),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20.r),
-          onTap: () => setState(() {
-            _expandedTipIndex = isExpanded ? -1 : index;
-          }),
-          child: AnimatedContainer(
-            duration: 300.ms,
-            padding: EdgeInsets.all(18.w),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42.w,
-                      height: 42.w,
-                      decoration: BoxDecoration(
-                        color:
-                            FloodColors.heritagePurple.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Icon(
-                        tip['icon'] as IconData,
-                        color: FloodColors.heritagePurple,
-                        size: 20.sp,
-                      ),
                     ),
-                    SizedBox(width: 14.w),
-                    Expanded(
-                      child: Text(
-                        tip['title'],
-                        style: GoogleFonts.poppins(
-                          fontSize: 15.sp,
-                          fontWeight: FontWeight.w600,
-                          color: _titleText,
-                        ),
-                      ),
-                    ),
-                    AnimatedRotation(
-                      turns: isExpanded ? 0.5 : 0,
-                      duration: 300.ms,
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: _mutedText,
-                        size: 24.sp,
-                      ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: _mutedText,
+                      size: 22.sp,
                     ),
                   ],
                 ),
-                AnimatedCrossFade(
-                  firstChild: const SizedBox.shrink(),
-                  secondChild: Padding(
-                    padding: EdgeInsets.only(top: 16.h, left: 56.w),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: (tip['tips'] as List<String>)
-                          .map((t) => Padding(
-                                padding: EdgeInsets.only(bottom: 10.h),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      margin: EdgeInsets.only(top: 4.h),
-                                      width: 6.w,
-                                      height: 6.w,
-                                      decoration: BoxDecoration(
-                                        color: FloodColors.heritagePurple,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    SizedBox(width: 10.w),
-                                    Expanded(
-                                      child: Text(
-                                        t,
-                                        style: GoogleFonts.inter(
-                                          fontSize: 14.sp,
-                                          color: _bodyText,
-                                          height: 1.5,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ))
-                          .toList(),
+
+                SizedBox(height: 16.h),
+
+                // DESCRIPTION
+                Text(
+                  _isLoadingForecast
+                      ? 'Loading the latest 7-day rainfall forecast…'
+                      : _forecast == null
+                          ? 'The 7-day rainfall forecast is unavailable right now.'
+                          : 'Monitor rainfall conditions over the next 7 days to prepare for possible flooding.',
+                  style: GoogleFonts.inter(
+                    fontSize: 13.5.sp,
+                    height: 1.55,
+                    color: _forecast == null && !_isLoadingForecast
+                        ? AppColors.error
+                        : _bodyText,
+                  ),
+                ),
+
+                SizedBox(height: 16.h),
+
+                // STATUS
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(14.w),
+                  decoration: BoxDecoration(
+                    color: _forecast == null && !_isLoadingForecast
+                        ? AppColors.error.withValues(
+                            alpha: 0.08,
+                          )
+                        : FloodColors.philippineBlue.withValues(
+                            alpha: 0.08,
+                          ),
+                    borderRadius: BorderRadius.circular(
+                      12.r,
+                    ),
+                    border: Border.all(
+                      color: _forecast == null && !_isLoadingForecast
+                          ? AppColors.error.withValues(
+                              alpha: 0.35,
+                            )
+                          : FloodColors.philippineBlue.withValues(
+                              alpha: 0.25,
+                            ),
                     ),
                   ),
-                  crossFadeState: isExpanded
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  duration: 300.ms,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        _forecast == null && !_isLoadingForecast
+                            ? Icons.cloud_off_rounded
+                            : Icons.info_outline_rounded,
+                        color: _forecast == null && !_isLoadingForecast
+                            ? AppColors.error
+                            : FloodColors.philippineBlue,
+                        size: 20.sp,
+                      ),
+                      SizedBox(width: 10.w),
+                      Expanded(
+                        child: Text(
+                          _forecast == null && !_isLoadingForecast
+                              ? 'Live forecast data is not available. '
+                                  'Tap this card to open the detailed forecast.'
+                              : 'Rainfall values are area-level estimates for '
+                                  'Milaor, Camarines Sur and are not river-gauge measurements.',
+                          style: GoogleFonts.inter(
+                            fontSize: 12.sp,
+                            height: 1.5,
+                            color: _forecast == null && !_isLoadingForecast
+                                ? AppColors.error
+                                : _bodyText,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: 14.h),
+
+                // OPEN DETAILS BUTTON
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const RainForecastScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.calendar_month_rounded,
+                    ),
+                    label: const Text(
+                      'View 7-Day Forecast',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: FloodColors.heritagePurple,
+                      side: BorderSide(
+                        color: FloodColors.heritagePurple.withValues(
+                          alpha: 0.35,
+                        ),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          12.r,
+                        ),
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        vertical: 12.h,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
+        )
+            .animate()
+            .fadeIn(
+              duration: 400.ms,
+            )
+            .slideY(
+              begin: 0.04,
+              end: 0,
+            ),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // SAFETY TIPS
+  // ==========================================================
+
+  Widget _buildSafetyTipsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          'Safety Guidance',
+          Icons.shield_rounded,
         ),
+        SizedBox(height: 12.h),
+        ..._safetyTips.asMap().entries.map(
+          (entry) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: 12.h,
+              ),
+              child: _buildSafetyTipCard(
+                entry.value,
+                entry.key,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // SAFETY TIP CARD
+  // ==========================================================
+
+  Widget _buildSafetyTipCard(
+    Map<String, dynamic> tip,
+    int index,
+  ) {
+    final List<dynamic> tips = (tip['tips'] as List<dynamic>?) ?? <dynamic>[];
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(18.r),
+        border: Border.all(
+          color: _colors.border,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Safety tip icon
+          Container(
+            width: 40.w,
+            height: 40.w,
+            decoration: BoxDecoration(
+              color: FloodColors.heritagePurple.withValues(
+                alpha: 0.1,
+              ),
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+            child: Icon(
+              tip['icon'] is IconData
+                  ? tip['icon'] as IconData
+                  : Icons.info_rounded,
+              color: FloodColors.heritagePurple,
+              size: 20.sp,
+            ),
+          ),
+
+          SizedBox(width: 12.w),
+
+          // Safety tip content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tip['title']?.toString() ?? 'Safety Tip',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w700,
+                    color: _titleText,
+                  ),
+                ),
+
+                SizedBox(height: 8.h),
+
+                // Display each safety tip
+                ...tips.map<Widget>((dynamic item) {
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: 7.h,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.only(
+                            top: 7.h,
+                          ),
+                          child: Container(
+                            width: 5.w,
+                            height: 5.w,
+                            decoration: BoxDecoration(
+                              color: FloodColors.heritagePurple,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        Expanded(
+                          child: Text(
+                            item.toString(),
+                            style: GoogleFonts.inter(
+                              fontSize: 12.5.sp,
+                              color: _bodyText,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // ─── EMERGENCY ACTIONS ─────────────────────────────────
+  // ==========================================================
+  // EMERGENCY ACTIONS
+  // ==========================================================
+
   Widget _buildEmergencyActions() {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(24.w),
+      padding: EdgeInsets.all(22.w),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            FloodColors.deepAnchor,
-            FloodColors.heritagePurple,
+            AppColors.deepAnchor,
+            AppColors.riverFlow,
           ],
         ),
-        borderRadius: BorderRadius.circular(28.r),
+        borderRadius: BorderRadius.circular(24.r),
         boxShadow: [
           BoxShadow(
-            color: FloodColors.heritagePurple.withValues(alpha: 0.3),
+            color: AppColors.deepAnchor.withValues(alpha: 0.35),
             blurRadius: 24,
-            offset: const Offset(0, 14),
+            offset: const Offset(0, 12),
           ),
         ],
       ),
@@ -1185,215 +1785,231 @@ class _FloodAlertScreenState extends State<FloodAlertScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.bolt_rounded,
-                  color: AppColors.warning, size: 24),
-              SizedBox(width: 8.w),
-              Text(
-                'EMERGENCY ACTIONS',
-                style: GoogleFonts.poppins(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.neutralWhite.withValues(alpha: 0.54),
-                  letterSpacing: 2,
+              Icon(
+                Icons.bolt_rounded,
+                color: Colors.white,
+                size: 24.sp,
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'EMERGENCY ACTIONS',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white.withValues(
+                          alpha: 0.7,
+                        ),
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    Text(
+                      'Need immediate help?',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20.sp,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          SizedBox(height: 8.h),
-          Text(
-            'Need immediate help?',
-            style: GoogleFonts.poppins(
-              fontSize: 22.sp,
-              fontWeight: FontWeight.w700,
-              color: AppColors.neutralWhite,
-            ),
-          ),
           SizedBox(height: 20.h),
           Row(
             children: [
-              Expanded(
-                child: _buildActionButton(
-                  icon: Icons.phone_in_talk_rounded,
-                  label: 'Call\nEmergency',
-                  color: FloodColors.danger,
-                  onTap: () =>
-                      _showMessage(context, 'Calling emergency hotline...'),
-                ),
+              _buildEmergencyActionButton(
+                icon: Icons.phone_in_talk_rounded,
+                label: 'Call Emergency',
+                color: FloodColors.danger,
+                onTap: () {
+                  _showMessage(
+                    context,
+                    'Calling emergency hotline...',
+                  );
+                },
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _buildActionButton(
-                  icon: Icons.campaign_rounded,
-                  label: 'Report\nFlood',
-                  color: const Color(0xFFF59E0B),
-                  onTap: () =>
-                      _showMessage(context, 'Opening flood report form...'),
-                ),
+              SizedBox(width: 10.w),
+              _buildEmergencyActionButton(
+                icon: Icons.report_rounded,
+                label: 'Report Flood',
+                color: FloodColors.alert,
+                onTap: () {
+                  _showMessage(
+                    context,
+                    'Opening flood report form...',
+                  );
+                },
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _buildActionButton(
-                  icon: Icons.share_location_rounded,
-                  label: 'Share\nLocation',
-                  color: const Color(0xFF0EA5E9),
-                  onTap: () =>
-                      _showMessage(context, 'Sharing your location...'),
-                ),
+              SizedBox(width: 10.w),
+              _buildEmergencyActionButton(
+                icon: Icons.share_location_rounded,
+                label: 'Share Location',
+                color: FloodColors.philippineBlue,
+                onTap: () {
+                  _showMessage(
+                    context,
+                    'Sharing your location...',
+                  );
+                },
               ),
             ],
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 600.ms);
+    ).animate().fadeIn(
+          duration: 600.ms,
+        );
   }
 
-  Widget _buildActionButton({
+  // ==========================================================
+  // EMERGENCY BUTTON
+  // ==========================================================
+
+  Widget _buildEmergencyActionButton({
     required IconData icon,
     required String label,
     required Color color,
     required VoidCallback onTap,
   }) {
-    return Material(
-      color: AppColors.neutralWhite.withValues(alpha: 0.15),
-      borderRadius: BorderRadius.circular(18.r),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18.r),
-        onTap: onTap,
-        child: Container(
-          padding: EdgeInsets.symmetric(vertical: 18.h),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18.r),
-            border: Border.all(
-                color: AppColors.neutralWhite.withValues(alpha: 0.2)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 44.w,
-                height: 44.w,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(14.r),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+    return Expanded(
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16.r),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16.r),
+          onTap: onTap,
+          child: Container(
+            padding: EdgeInsets.symmetric(
+              vertical: 16.h,
+              horizontal: 4.w,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16.r),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44.w,
+                  height: 44.w,
+                  decoration: BoxDecoration(
+                    color: color.withValues(
+                      alpha: 0.2,
                     ),
-                  ],
+                    borderRadius: BorderRadius.circular(
+                      14.r,
+                    ),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: 22.sp,
+                  ),
                 ),
-                child: Icon(icon, color: AppColors.neutralWhite, size: 22.sp),
-              ),
-              SizedBox(height: 10.h),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 13.sp,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.neutralWhite,
-                  height: 1.3,
+                SizedBox(height: 10.h),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11.5.sp,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    height: 1.3,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // ─── HELPERS ───────────────────────────────────────────
-  String _formatTime(DateTime dateTime) {
-    final hour = dateTime.hour.toString().padLeft(2, '0');
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
+  // ==========================================================
+  // SAFETY MESSAGE
+  // ==========================================================
 
-  void _showAlertDetails(Map<String, dynamic> alert) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: EdgeInsets.all(24.w),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32.r)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40.w,
-                height: 4.h,
-                decoration: BoxDecoration(
-                  color: _colors.border,
-                  borderRadius: BorderRadius.circular(2.r),
-                ),
-              ),
-            ),
-            SizedBox(height: 20.h),
-            Text(
-              alert['title'],
-              style: GoogleFonts.poppins(
-                fontSize: 22.sp,
-                fontWeight: FontWeight.w700,
-                color: _titleText,
-              ),
-            ),
-            SizedBox(height: 16.h),
-            _buildDetailRow('Status', alert['level'], alert['color'] as Color),
-            SizedBox(height: 12.h),
-            _buildDetailRow(
-                'Station', alert['station'], FloodColors.heritagePurple),
-            SizedBox(height: 12.h),
-            _buildDetailRow(
-                'Last Updated', alert['updated'], AppColors.neutralGray500),
-            SizedBox(height: 20.h),
-            Text(
-              'Residents in this area are advised to monitor water levels and follow safety guidelines issued by MDRRMO.',
-              style: GoogleFonts.inter(
-                fontSize: 14.sp,
-                color: _bodyText,
-                height: 1.6,
-              ),
-            ),
-            SizedBox(height: 24.h),
-          ],
-        ),
-      ),
-    );
-  }
+  void _showMessage(
+    BuildContext context,
+    String message,
+  ) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
-  Widget _buildDetailRow(String label, String value, Color valueColor) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.inter(fontSize: 14.sp, color: _mutedText),
-        ),
-        Text(
-          value,
-          style: GoogleFonts.poppins(
-            fontSize: 14.sp,
-            fontWeight: FontWeight.w600,
-            color: valueColor,
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _showMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================
+  // ATTRIBUTION
+  // ==========================================================
+
+  Widget _buildAttributionCard() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(
+          color: _colors.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.public_rounded,
+                size: 14.sp,
+                color: _mutedText,
+              ),
+              SizedBox(width: 6.w),
+              Expanded(
+                child: Text(
+                  'Data source',
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5.sp,
+                    fontWeight: FontWeight.w700,
+                    color: _titleText,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            'Weather data by Open-Meteo.com (CC BY 4.0). '
+            'Flood advisories: monitor PAGASA and your local '
+            'MDRRMO. Values are area-level grid-cell estimates '
+            'for Milaor, Camarines Sur — not measurements taken '
+            'inside a barangay.',
+            style: GoogleFonts.inter(
+              fontSize: 11.5.sp,
+              height: 1.55,
+              color: _mutedText,
+            ),
+          ),
+        ],
       ),
     );
   }

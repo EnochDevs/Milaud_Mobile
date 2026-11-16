@@ -478,6 +478,23 @@ void main() {
       expect(req('').timelineStep, 0);
     });
 
+    test('verification and feedback remain separate from report progress', () {
+      CitizenReport report(String decision) => CitizenReport.fromJson({
+        'id': 'review-test', 'category': 'Fire', 'status': 'received',
+        'verification_status': decision, 'verification_note': 'Please provide a location.',
+      });
+      expect(report('pending').verificationLabel, 'Pending verification');
+      expect(report('pending').statusLabel, 'Received');
+      expect(report('pending').verificationMessage, contains('verification'));
+      expect(report('rejected').isOngoing, false);
+      expect(report('rejected').isResolved, false);
+      expect(report('rejected').verificationLabel, 'Rejected');
+      expect(report('needs_information').verificationNote, contains('location'));
+      expect(report('needs_information').verificationLabel, 'More information needed');
+      expect(CitizenReport.fromJson({'status': 'assigned'}).verificationStatus, 'verified');
+      expect(CitizenReport.fromJson({}).verificationStatus, 'pending');
+    });
+
     test('reference is derived from the row id and matches the SQL trigger', () {
       // RPT- + first 8 chars of the uuid without dashes — the exact formula
       // citizen_reports_status_tracking.sql uses for push text.

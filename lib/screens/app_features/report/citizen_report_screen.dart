@@ -1,8 +1,6 @@
 // lib/screens/app_features/report/citizen_report_screen.dart
 // ignore_for_file: unused_field, deprecated_member_use
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -11,15 +9,16 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../home/home.dart';
 import 'package:may_laud/theme/app_theme.dart';
 import 'package:may_laud/providers/content_providers.dart';
 import '../../home/nav_bar_button.dart';
 import '../../../services/app_services.dart';
-import '../../../services/ai_triage_service.dart';
 import '../../../utils/guest_guard.dart'; // ✅ Import guest guard
 import 'report_history_screen.dart';
+import 'live_detection_camera_screen.dart';
 
 // ─── REPORT COLOR PALETTE ─────────────────────────────
 class ReportColors {
@@ -46,6 +45,10 @@ class ReportColors {
         colors: [heritagePurple, riverFlow],
       );
 }
+
+enum _ManualCategoryMode { emergency, community }
+
+enum _InjuryAnswer { yes, no, notSure }
 
 class CitizenReportScreen extends ConsumerStatefulWidget {
   const CitizenReportScreen({super.key});
@@ -95,88 +98,32 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       _isDark ? Colors.white.withValues(alpha: 0.10) : AppColors.neutralGray200;
 
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _landmarkController = TextEditingController();
 
-  // 'Emergency' | 'Minor Concern' — matches api.py's `report_type` field
-  // exactly (see ReportRequest/classify_report() in api.py). 'Minor
-  // Concern' makes the backend force severity to 'Low' without even
-  // running the model.
-  String _reportType = 'Emergency';
-  // FIX — used to default to the first category in whichever list
-  // ('Fire' under Emergency), which made that chip look already picked
-  // the moment the screen opened even though the resident hadn't tapped
-  // anything. Null means "nothing chosen yet" — a category only becomes
-  // selected via an explicit tap or the AI detecting one from a photo
-  // (see _detectCategoryFromPhoto()); _submitReport() below refuses to
-  // submit until one is actually set.
+  // The model suggests a category from the photos; the citizen confirms or
+  // corrects it before submitting. Severity stays hidden and admin-only.
   String? _selectedCategory;
-  // FIX — used to default to 'Medium', which made that chip look
-  // already picked the moment the screen opened, before the resident (or
-  // the AI) had actually chosen anything — the same issue as
-  // _selectedCategory above. Null means "nothing chosen yet"; a level
-  // only becomes selected via an explicit tap or an AI classification
-  // result. submitReport() already treats a null priority as "let the
-  // backend derive one," so nothing downstream needed to change for
-  // this to be safe to leave unset.
-  String? _selectedPriority;
-  // Tracks whether the resident actually tapped a priority chip
-  // themselves — without this flag, an AI suggestion landing here would
-  // look identical to a deliberate choice, and a later AI re-check could
-  // silently overwrite what they picked.
-  bool _priorityManuallySet = false;
-  // Same idea for category: attaching a photo of a fire auto-selects the
-  // "Fire" chip below, but only while the resident hasn't already picked
-  // one themselves — this flag is how _detectCategoryFromPhoto() knows
-  // not to clobber a deliberate choice.
-  bool _categoryManuallySet = false;
   final List<ReportPhoto> _attachedPhotos = [];
   final ImagePicker _picker = ImagePicker();
-  final AiTriageService _ai = AiTriageService();
   bool _isSubmitting = false;
+  bool _isAnalyzingPhotos = false;
+  _ManualCategoryMode? _manualCategoryMode;
   bool _isFetchingLocation = false;
-
-  // Whichever category/priority the AI most recently suggested (photo
-  // detection / description classification), so the UI can show a small
-  // "AI suggested" badge on that chip instead of leaving it looking like
-  // an arbitrary default the resident is expected to double-check.
-  String? _aiSuggestedCategory;
-  String? _aiSuggestedPriority;
-  // The AI's raw classification result, kept alongside _aiSuggestedPriority
-  // so submitReport() can record what the AI suggested (for admin
-  // review) without re-running the exact same classification a second
-  // time at submission — see the submitReport() call in _submitReport().
-  SeverityResult? _lastSeverityResult;
-  // The most recent photo-verification result — drives the "this photo
-  // doesn't look like a disaster photo" warning in _buildPhotoCard().
-  // Previously fetched but silently discarded: the UI only ever used it
-  // for category auto-select, never surfaced isValidPhoto /
-  // requiresManualReview to the resident at all.
-  ImageVerificationResult? _lastImageResult;
-  bool _isCheckingPhotoCategory = false;
-  bool _isCheckingSeverity = false;
-  Timer? _severityDebounce;
+  double? _capturedLatitude;
+  double? _capturedLongitude;
+  int _photoAnalysisGeneration = 0;
+  ReportCategorySuggestion? _categorySuggestion;
+  final Set<String> _shownEmergencyWarnings = <String>{};
+  bool _medicalConfirmationHandled = false;
+  AccidentTriageDecision? _accidentTriageDecision;
+  FireTriageDecision? _fireTriageDecision;
 
   final CitizenReportService _reportService = CitizenReportService();
+  final HotlineService _hotlineService = HotlineService();
 
-  // Maps what AiTriageService.verifyImage() can detect onto this screen's
-  // own category chips. Earthquake/Landslide have no matching chip yet —
-  // intentionally left unmapped for now, so a detection for either of
-  // those is simply ignored rather than guessing at the wrong category.
-  static const Map<String, String> _aiCategoryMap = {
-    'Fire': 'Fire',
-    'Flooding': 'Flooding',
-  };
-
-  // FIX — Fire/Flooding used to live in one combined list alongside the
-  // routine categories below. Now that there's a separate Emergency /
-  // Minor Concern toggle (matching api.py's own report_type concept —
-  // 'Minor Concern' forces Low severity without even running the model),
-  // keeping them there too would let a resident tag a house fire as a
-  // "minor concern" and have it auto-downgraded. Split by report type
-  // instead; _categories below picks the right list for whichever is
-  // currently selected.
+  // These four categories are supported by the emergency photo classifier.
   final List<Map<String, dynamic>> _emergencyCategories = [
     {
       'name': 'Fire',
@@ -190,6 +137,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     },
     {
       'name': 'Medical Emergency',
+      'label': 'Medical / Road Accident',
       'icon': Icons.medical_services_rounded,
       'color': const Color(0xFFEF4444)
     },
@@ -237,73 +185,36 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     },
   ];
 
-  List<Map<String, dynamic>> get _categories => _reportType == 'Emergency'
-      ? _emergencyCategories
-      : _minorConcernCategories;
+  bool _isEmergencyCategory(String category) =>
+      _emergencyCategories.any((item) => item['name'] == category);
 
-  void _setReportType(String type) {
-    if (_reportType == type) return;
-    setState(() {
-      _reportType = type;
-      // The previously-selected category (if any) may not exist in the
-      // new list at all (e.g. switching away from Emergency loses
-      // "Fire") — clear it rather than leaving a stale, invisible
-      // selection. Matches the "nothing pre-selected" rule below.
-      _selectedCategory = null;
-      _categoryManuallySet = false;
-      _aiSuggestedCategory = null;
-      // Same idea for severity — AI assistance is Emergency-only, so a
-      // result from before switching modes shouldn't linger into Minor
-      // Concern (or carry stale confidence numbers back into a fresh
-      // Emergency report later).
-      _selectedPriority = null;
-      _priorityManuallySet = false;
-      _aiSuggestedPriority = null;
-      _lastSeverityResult = null;
-    });
-  }
+  String _categoryLabel(String category) => category == 'Medical Emergency'
+      ? 'Medical Emergency / Road Accident'
+      : category;
 
-  final List<Map<String, dynamic>> _priorities = [
-    {
-      'level': 'Low',
-      'label': 'Routine issue',
-      'icon': Icons.flag_rounded,
-      'color': ReportColors.priorityLow
-    },
-    {
-      'level': 'Medium',
-      'label': 'Needs attention',
-      'icon': Icons.flag_rounded,
-      'color': ReportColors.priorityMedium
-    },
-    {
-      'level': 'High',
-      'label': 'Urgent concern',
-      'icon': Icons.flag_rounded,
-      'color': ReportColors.priorityHigh
-    },
-    // NOTE: "Emergency" was removed here to match the project's documented
-    // 3-level severity scale (High/Medium/Low) — see ai_triage_service.dart's
-    // toPriorityLevel(), which now folds the AI's "Critical" into "High".
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    // Live severity suggestion as the resident describes the issue — no
-    // click required (see _onDescriptionChanged()). "Auto-Classify
-    // Severity" further down still lets them re-trigger it manually,
-    // e.g. after editing the description further.
-    _descriptionController.addListener(_onDescriptionChanged);
+  String _suggestionMessage(ReportCategorySuggestion suggestion) {
+    final category = suggestion.suggestedCategory!;
+    final label = _categoryLabel(category);
+    if (suggestion.contextAvailable) {
+      return 'Likely $label\n'
+          '${suggestion.contextSummary ?? 'The local image model and context check support the same category.'}';
+    }
+    final confidence = suggestion.suggestedConfidence?.toStringAsFixed(1);
+    if (category == 'Medical Emergency') {
+      return 'Possible $label\n'
+          'AI confidence: ${confidence ?? 'unknown'}%. Citizen confirmation and admin review are required.';
+    }
+    return 'AI detected: $label\n'
+        'Incident confidence: ${confidence ?? 'unknown'}% '
+        'from ${suggestion.supportingPhotoCount} supporting '
+        '${suggestion.supportingPhotoCount == 1 ? 'photo' : 'photos'}.';
   }
 
   @override
   void dispose() {
-    _titleController.dispose();
-    _descriptionController.removeListener(_onDescriptionChanged);
     _descriptionController.dispose();
     _locationController.dispose();
-    _severityDebounce?.cancel();
+    _landmarkController.dispose();
     super.dispose();
   }
 
@@ -314,144 +225,371 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
   // what both the Supabase upload and the AI image-verification call
   // need anyway (see ReportPhoto in app_services.dart).
   Future<void> _pickFromGallery() async {
+    if (_isSubmitting) return;
+    if (_attachedPhotos.length >= CitizenReportService.maxAnalyzedPhotos) {
+      _showSnack('You can attach up to 3 photos.');
+      return;
+    }
     final XFile? image =
         await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (image == null) return;
     final bytes = await image.readAsBytes();
     if (!mounted) return;
     final photo = ReportPhoto(bytes: bytes, filename: image.name);
-    setState(() => _attachedPhotos.add(photo));
-    _detectCategoryFromPhoto(photo);
+    setState(() {
+      _attachedPhotos.add(photo);
+      _shownEmergencyWarnings.clear();
+      _medicalConfirmationHandled = false;
+      _accidentTriageDecision = null;
+      _fireTriageDecision = null;
+    });
+    await _analyzeAttachedPhotos();
   }
 
   Future<void> _pickFromCamera() async {
-    final XFile? photo =
-        await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
-    if (photo == null) return;
-    final bytes = await photo.readAsBytes();
-    if (!mounted) return;
-    final picked = ReportPhoto(bytes: bytes, filename: photo.name);
-    setState(() => _attachedPhotos.add(picked));
-    _detectCategoryFromPhoto(picked);
-  }
-
-  void _removePhoto(int index) => setState(() {
-        _attachedPhotos.removeAt(index);
-        // The removed photo may be the one this result described —
-        // don't keep showing a stale warning/badge for a photo that's
-        // no longer attached.
-        _lastImageResult = null;
-      });
-
-  // ─── AI: AUTO-DETECT CATEGORY FROM PHOTO ─────────────
-  // Runs the moment a photo is attached (not only at final submission,
-  // like submitReport() already does for the DB's own record-keeping
-  // fields) so the resident sees their category chip react immediately —
-  // e.g. attaching a photo of a burning building auto-selects "Fire".
-  // Never overrides a category the resident already picked themselves.
-  // FIX — this used to bail out at the very top whenever a category had
-  // already been manually picked, which also skipped running the check
-  // at all — so a resident who picked a category first, then attached
-  // an irrelevant/non-disaster photo, never got the API's
-  // is_valid_report_photo / requires_human_review warning either. The
-  // category auto-select and the validity warning are two independent
-  // things the same API call returns; only the former should respect a
-  // manual category pick, not the whole check.
-  Future<void> _detectCategoryFromPhoto(ReportPhoto photo) async {
-    if (!mounted) return;
-    setState(() => _isCheckingPhotoCategory = true);
-    try {
-      final result =
-          await _ai.verifyImage(photo.bytes, filename: photo.filename);
-      if (!mounted) return;
-      setState(() => _lastImageResult = result);
-      if (result == null || _categoryManuallySet) return;
-
-      final matched = _aiCategoryMap[result.detectedCategory];
-      if (matched == null) return;
-      setState(() {
-        // A detected Fire/Flooding only exists as a category chip under
-        // Emergency mode (see the split above) — switch modes too, or
-        // the selection below would point at a category the visible
-        // list doesn't contain.
-        _reportType = 'Emergency';
-        _selectedCategory = matched;
-        _aiSuggestedCategory = matched;
-      });
-    } finally {
-      if (mounted) setState(() => _isCheckingPhotoCategory = false);
-    }
-  }
-
-  // ─── AI: AUTO-SUGGEST SEVERITY FROM DESCRIPTION ──────
-  // Live suggestion as the resident types — debounced so it doesn't fire
-  // an AI request on every keystroke (see _onDescriptionChanged()). The
-  // "Auto-Classify Severity" button below calls this too, for an
-  // on-demand re-check (e.g. after editing the description further, or
-  // to refresh after having manually overridden the last suggestion).
-  void _onDescriptionChanged() {
-    _severityDebounce?.cancel();
-    _severityDebounce = Timer(const Duration(milliseconds: 700),
-        () => _classifySeverityFromDescription());
-  }
-
-  Future<void> _classifySeverityFromDescription({bool manual = false}) async {
-    // AI-assisted severity is Emergency-only (see the button/panel above
-    // being hidden entirely in Minor Concern) — Minor Concern residents
-    // pick a level manually, full stop. Guarding here too matters
-    // because _onDescriptionChanged() fires regardless of report type;
-    // without this, typing in Minor Concern mode would still silently
-    // classify in the background and auto-select a priority chip nobody
-    // asked for.
-    if (_reportType != 'Emergency') return;
-    // A manual button tap always runs, even overriding a prior manual
-    // pick — typing-triggered calls respect it and stay quiet instead.
-    if (_priorityManuallySet && !manual) return;
-
-    final text = _descriptionController.text.trim();
-    if (text.isEmpty) {
-      if (manual) _showSnack('Describe the situation first.');
+    if (_isSubmitting) return;
+    if (_attachedPhotos.length >= CitizenReportService.maxAnalyzedPhotos) {
+      _showSnack('You can attach up to 3 photos.');
       return;
     }
-    // Too short to mean much yet — skip rather than classifying a
-    // fragment like "the". Only applies to the typing-triggered path; a
-    // manual tap always runs regardless of length.
-    if (!manual && text.length < 15) return;
+    final picked = await Navigator.of(context).push<ReportPhoto>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const LiveDetectionCameraScreen(),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _attachedPhotos.add(picked);
+      _shownEmergencyWarnings.clear();
+      _medicalConfirmationHandled = false;
+      _accidentTriageDecision = null;
+      _fireTriageDecision = null;
+    });
+    await _analyzeAttachedPhotos();
+  }
 
-    if (!mounted) return;
-    setState(() => _isCheckingSeverity = true);
-    try {
-      final result = await _ai.classifySeverity(
-        text,
-        reportType: _reportType,
-        category: _selectedCategory,
-      );
-      if (!mounted) return;
-      if (result == null) {
-        if (manual) {
-          _showSnack(
-              'Could not reach the triage model. Try again, or pick a severity manually.');
-        }
-        return;
-      }
-      final level = result.toPriorityLevel();
+  Future<void> _removePhoto(int index) async {
+    if (_isSubmitting) return;
+    setState(() {
+      _attachedPhotos.removeAt(index);
+      _shownEmergencyWarnings.clear();
+      _medicalConfirmationHandled = false;
+      _accidentTriageDecision = null;
+      _fireTriageDecision = null;
+    });
+    await _analyzeAttachedPhotos();
+  }
+
+  Future<void> _analyzeAttachedPhotos() async {
+    final generation = ++_photoAnalysisGeneration;
+    final photos = List<ReportPhoto>.of(_attachedPhotos);
+    final previousSuggestion = _categorySuggestion?.suggestedCategory;
+
+    if (photos.isEmpty) {
       setState(() {
-        _priorityManuallySet = false;
-        _selectedPriority = level;
-        _aiSuggestedPriority = level;
-        _lastSeverityResult = result;
+        _isAnalyzingPhotos = false;
+        _categorySuggestion = null;
+        _manualCategoryMode = null;
+        _selectedCategory = null;
+        _accidentTriageDecision = null;
+        _fireTriageDecision = null;
       });
-    } finally {
-      if (mounted) setState(() => _isCheckingSeverity = false);
+      return;
+    }
+
+    setState(() {
+      _isAnalyzingPhotos = true;
+      // Remove a previous AI selection while the changed photo set is being
+      // checked. Manual citizen selections are preserved.
+      if (_selectedCategory == previousSuggestion) {
+        _selectedCategory = null;
+      }
+    });
+    try {
+      final suggestion =
+          await _reportService.suggestReportCategory(photos: photos);
+      if (!mounted || generation != _photoAnalysisGeneration) return;
+
+      for (final result in suggestion.results) {
+        debugPrint(
+          '[Photo AI] category=${result.detectedCategory}, '
+          'categoryConfidence=${result.categoryConfidence}, '
+          'valid=${result.isValidPhoto}, '
+          'validityConfidence=${result.validityModelConfidence}, '
+          'trusted=${result.hasTrustedCategory}',
+        );
+      }
+
+      final suggestedCategory = suggestion.suggestedCategory;
+      setState(() {
+        _categorySuggestion = suggestion;
+        _isAnalyzingPhotos = false;
+        if (suggestedCategory != null) {
+          _manualCategoryMode = null;
+          // Medical/Road Accident is never finalized from the model alone.
+          // The citizen must confirm that somebody needs medical assistance.
+          _selectedCategory = suggestedCategory == 'Medical Emergency'
+              ? null
+              : suggestedCategory;
+        } else if (suggestedCategory == null &&
+            _selectedCategory == previousSuggestion) {
+          // Never leave an old AI-selected category visible after the new
+          // photo fails validation or is outside legacy Fire/Flood support.
+          _selectedCategory = null;
+        }
+      });
+
+      // Do not ask severity questions as soon as a photo is analyzed. Let
+      // the citizen describe the incident first; the safety check is a
+      // fallback at submit time, after the text model has that context.
+    } catch (_) {
+      if (!mounted || generation != _photoAnalysisGeneration) return;
+      setState(() {
+        _categorySuggestion = ReportCategorySuggestion(
+          checkedPhotoCount: photos.length,
+          hasConflictingResults: false,
+          aiUnavailable: true,
+          results: const [],
+        );
+        _isAnalyzingPhotos = false;
+        if (_selectedCategory == previousSuggestion) {
+          _selectedCategory = null;
+        }
+      });
     }
   }
 
-  // ─── GET CURRENT GPS LOCATION ────────────────────────
-  // FIX — the pin button used to just show a "Getting current
-  // location..." snackbar and never actually fetched anything, so the
-  // field always had to be typed by hand. This now reads the device GPS,
-  // reverse-geocodes it to a readable street/barangay address, and fills
-  // the Location field with it.
+  Future<void> _selectCategory(String category) async {
+    if (category == 'Medical Emergency') {
+      setState(() {
+        _selectedCategory = category;
+        _manualCategoryMode = null;
+        _medicalConfirmationHandled = false;
+        _accidentTriageDecision = null;
+        _fireTriageDecision = null;
+      });
+      return;
+    }
+    if (category == 'Fire') {
+      setState(() {
+        _selectedCategory = 'Fire';
+        _manualCategoryMode = null;
+        _accidentTriageDecision = null;
+        _fireTriageDecision = null;
+      });
+      return;
+    }
+    setState(() {
+      _selectedCategory = category;
+      _accidentTriageDecision = null;
+      _fireTriageDecision = null;
+    });
+  }
+
+  Future<void> _confirmFireUrgency() async {
+    if (!mounted) return;
+    final answer = await showDialog<_InjuryAnswer>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(
+          Icons.local_fire_department_rounded,
+          color: Colors.red,
+          size: 40,
+        ),
+        title: const Text('Possible fire'),
+        content: const Text(
+          'Move away from fire, smoke, and unsafe structures.\n\n'
+          'May taong nasa panganib, may bahay o gusaling nanganganib, o mabilis bang kumakalat ang apoy?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, _InjuryAnswer.notSure),
+            child: const Text('Not sure'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, _InjuryAnswer.no),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, _InjuryAnswer.yes),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    FireTriageDecision decision;
+    if (answer == _InjuryAnswer.yes) {
+      decision = FireTriageDecision.peopleOrStructuresInDanger;
+    } else if (answer == _InjuryAnswer.no) {
+      final uncontrolled = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(
+            Icons.local_fire_department_rounded,
+            color: Colors.orange,
+          ),
+          title: const Text('Is there an active uncontrolled fire?'),
+          content: const Text(
+            'Choose No for a controlled cooking fire, supervised burning, or when there is no active danger.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('No, controlled / no danger'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Yes, still uncontrolled'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      decision = uncontrolled == true
+          ? FireTriageDecision.activeUncontrolledFire
+          : FireTriageDecision.controlledOrNoActiveDanger;
+    } else {
+      decision = FireTriageDecision.notSure;
+    }
+
+    setState(() {
+      _selectedCategory = 'Fire';
+      _manualCategoryMode = null;
+      _accidentTriageDecision = null;
+      _fireTriageDecision = decision;
+    });
+  }
+
+  Future<void> _confirmMedicalEmergency({bool force = false}) async {
+    if (!mounted || (_medicalConfirmationHandled && !force)) return;
+    _medicalConfirmationHandled = true;
+    final answer = await showDialog<_InjuryAnswer>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(
+          Icons.medical_services_rounded,
+          color: Colors.red,
+          size: 40,
+        ),
+        title: const Text('Possible medical emergency or road accident'),
+        content: const Text(
+          'May nasaktan o may taong nasa agarang panganib?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, _InjuryAnswer.notSure),
+            child: const Text('Not sure'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, _InjuryAnswer.no),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, _InjuryAnswer.yes),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    AccidentTriageDecision decision;
+    if (answer == _InjuryAnswer.yes) {
+      decision = AccidentTriageDecision.injuryOrImmediateDanger;
+    } else if (answer == _InjuryAnswer.no) {
+      final roadBlocked = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.traffic_rounded, color: Colors.orange),
+          title: const Text('Is the road blocked or unsafe?'),
+          content: const Text(
+            'Choose Yes if vehicles or debris are blocking traffic or creating another danger.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('No, road is clear'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Yes, road is blocked'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      decision = roadBlocked == true
+          ? AccidentTriageDecision.noInjuryRoadBlocked
+          : AccidentTriageDecision.noInjuryRoadClear;
+    } else {
+      decision = AccidentTriageDecision.notSure;
+    }
+
+    setState(() {
+      _selectedCategory = 'Medical Emergency';
+      _manualCategoryMode = null;
+      _accidentTriageDecision = decision;
+      _fireTriageDecision = null;
+    });
+    if (decision == AccidentTriageDecision.injuryOrImmediateDanger) {
+      await _showEmergencyGuidance('Medical Emergency');
+    }
+  }
+
+  void _enableManualCategoryMode(_ManualCategoryMode mode) {
+    final allowedCategories = mode == _ManualCategoryMode.emergency
+        ? _emergencyCategories
+        : _minorConcernCategories;
+    final currentIsAllowed =
+        allowedCategories.any((item) => item['name'] == _selectedCategory);
+    setState(() {
+      _manualCategoryMode = mode;
+      if (!currentIsAllowed) {
+        _selectedCategory = null;
+        _accidentTriageDecision = null;
+        _fireTriageDecision = null;
+      }
+    });
+  }
+
+  Future<void> _showEmergencyGuidance(String category) async {
+    if (!mounted || !_shownEmergencyWarnings.add(category)) return;
+    final isFire = category == 'Fire';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+          isFire
+              ? Icons.local_fire_department_rounded
+              : Icons.medical_services_rounded,
+          color: Colors.red,
+          size: 40,
+        ),
+        title: Text('Possible ${_categoryLabel(category)}'),
+        content: Text(
+          '${isFire ? 'Move away from fire, smoke, and unsafe structures.' : 'Keep the person safe and do not move them unless necessary.'}\n\n'
+          'This app records a report but does not automatically contact emergency responders. Use your official local emergency contact channel if anyone is in immediate danger.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Continue report'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Fill the location field using the device GPS.
   Future<void> _useCurrentLocation() async {
     if (_isFetchingLocation) return;
     setState(() => _isFetchingLocation = true);
@@ -512,7 +650,11 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       }
 
       if (!mounted) return;
-      setState(() => _locationController.text = address);
+      setState(() {
+        _locationController.text = address;
+        _capturedLatitude = position.latitude;
+        _capturedLongitude = position.longitude;
+      });
     } catch (e) {
       if (!mounted) return;
       _showSnack('Could not get your location. Please enter it manually.');
@@ -521,11 +663,49 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     }
   }
 
+  String _locationForSubmission() {
+    final address = _locationController.text.trim();
+    final landmark = _landmarkController.text.trim();
+    final coordinates = _capturedLatitude != null && _capturedLongitude != null
+        ? '${_capturedLatitude!.toStringAsFixed(5)}, ${_capturedLongitude!.toStringAsFixed(5)}'
+        : '';
+    final addressIsCoordinates =
+        coordinates.isNotEmpty && address == coordinates;
+
+    return [
+      if (landmark.isNotEmpty) 'Landmark: $landmark',
+      if (address.isNotEmpty && !addressIsCoordinates) 'Address: $address',
+      if (coordinates.isNotEmpty) 'GPS: $coordinates',
+    ].join(' • ');
+  }
+
   // ─── SUBMIT REPORT WITH GUEST CHECK ──────────────────
+  bool _messageNeedsSafetyFallback(String message) {
+    final words = RegExp(r'[A-Za-z]+')
+        .allMatches(message)
+        .map((match) => match.group(0)!.toLowerCase())
+        .where((word) => word.length >= 2)
+        .toList(growable: false);
+
+    // Messages such as "may aksidente" or "accident sa kanto" identify an
+    // event but do not say whether anybody is injured or still in danger.
+    return words.length < 6 || words.toSet().length < 4;
+  }
+
   Future<void> _submitReport() async {
     // ✅ Guest restriction: guests cannot submit reports
     if (GuestGuard.isGuest(ref)) {
       await GuestGuard.showGuestRestrictionDialog(context);
+      return;
+    }
+
+    if (_isAnalyzingPhotos) {
+      _showSnack('Please wait while the photo is being checked.');
+      return;
+    }
+
+    if (_attachedPhotos.isEmpty) {
+      _showSnack('Add a photo of the incident first.');
       return;
     }
 
@@ -534,42 +714,116 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     // Category has no Form field/validator of its own (it's a chip grid,
     // not a TextFormField) — check it here instead, now that nothing is
     // pre-selected on open.
-    final category = _selectedCategory;
+    var category = _selectedCategory;
     if (category == null) {
-      _showSnack('Please select a category.');
-      return;
+      if (_isAnalyzingPhotos) {
+        _showSnack('Please wait while the photo is being checked.');
+        return;
+      }
+      // A trusted Medical photo result supplies the category. The safety
+      // fallback is considered later, after the completed message is checked.
+      if (_categorySuggestion?.suggestedCategory == 'Medical Emergency') {
+        category = 'Medical Emergency';
+        setState(() => _selectedCategory = category);
+      }
+      if (category == null) {
+        _showSnack('Please confirm or choose a category.');
+        return;
+      }
     }
+    final reportType =
+        _isEmergencyCategory(category) ? 'Emergency' : 'Minor Concern';
+
+    // Keep analysis and upload consistent even if the widget rebuilds while
+    // the network request is running.
+    final photosToSubmit = List<ReportPhoto>.of(_attachedPhotos);
 
     setState(() => _isSubmitting = true);
 
     try {
+      final description = _descriptionController.text.trim();
+      final textSeverity = await _reportService.classifyReportSeverity(
+        description: description,
+        reportType: reportType,
+        category: category,
+      );
+
+      // Severity stays admin-only. The citizen sees the simple safety
+      // fallback only when the completed message is too short or unclear.
+      final textAlreadyFoundHighDanger =
+          textSeverity?.toPriorityLevel() == 'High';
+      final needsSafetyFallback = reportType == 'Emergency' &&
+          !textAlreadyFoundHighDanger &&
+          _messageNeedsSafetyFallback(description);
+
+      // Never let an answer retained from an earlier vague submission
+      // override a later, sufficiently detailed text-model result.
+      if (!needsSafetyFallback &&
+          (_accidentTriageDecision != null || _fireTriageDecision != null)) {
+        setState(() {
+          _accidentTriageDecision = null;
+          _fireTriageDecision = null;
+        });
+      }
+      if (needsSafetyFallback &&
+          category == 'Medical Emergency' &&
+          _accidentTriageDecision == null) {
+        await _confirmMedicalEmergency(force: true);
+        category = _selectedCategory;
+        if (category == null || _accidentTriageDecision == null) return;
+      }
+      if (needsSafetyFallback &&
+          category == 'Fire' &&
+          _fireTriageDecision == null) {
+        await _confirmFireUrgency();
+        category = _selectedCategory;
+        if (category == null || _fireTriageDecision == null) return;
+      }
+
       // Emergency reports have no title field (see _buildDetailsCard()) —
       // fall back to the category itself so `subcategory` (a required,
       // non-null DB column) still shows admins something readable
       // instead of an empty string.
-      final title =
-          _reportType == 'Emergency' ? category : _titleController.text.trim();
+      final title = category;
 
+      ReportPhotoAssessment? photoAssessment;
+      if (photosToSubmit.isNotEmpty) {
+        final cachedSuggestion = _categorySuggestion;
+        final cachedMatchesPhotos = cachedSuggestion != null &&
+            cachedSuggestion.checkedPhotoCount == photosToSubmit.length;
+        final cachedHasTrustedResult = cachedSuggestion?.results
+                .any((result) => result.hasTrustedCategory) ==
+            true;
+
+        photoAssessment = cachedMatchesPhotos &&
+                (reportType == 'Emergency' || cachedHasTrustedResult)
+            ? _reportService.assessmentFromSuggestion(
+                suggestion: cachedSuggestion,
+                category: category,
+              )
+            : reportType == 'Emergency'
+                ? await _reportService.assessReportPhotos(
+                    photos: photosToSubmit,
+                    category: category,
+                    reportType: reportType,
+                  )
+                : null;
+      }
+
+      final submittedLocation = _locationForSubmission();
       final result = await _reportService.submitReport(
         category: category,
         subcategory: title,
-        description: _descriptionController.text.trim(),
-        location: _locationController.text.trim(),
-        photoFiles: _attachedPhotos,
-        reportType: _reportType,
-        // FIX — used to only pass this through when the resident tapped a
-        // chip themselves, leaving it null otherwise so submitReport()
-        // would run its own AI classification at submit time. Now that
-        // _selectedPriority reliably reflects either their explicit pick
-        // or a result from tapping "Auto-Classify Severity" above,
-        // passing it straight through avoids re-running the exact same
-        // AI call a second time at submission. If neither ever happened
-        // (button never tapped, no manual pick), submitReport() below
-        // still runs its own classification as a fallback — reportType
-        // is passed along either way so that fallback stays consistent
-        // with the Emergency/Minor Concern toggle above.
-        priority: _selectedPriority,
-        severityResult: _lastSeverityResult,
+        description: description,
+        location: submittedLocation,
+        photoFiles: photosToSubmit,
+        reportType: reportType,
+        photoAssessment: photoAssessment,
+        accidentTriageDecision: _accidentTriageDecision,
+        fireTriageDecision: _fireTriageDecision,
+        preclassifiedSeverity: textSeverity,
+        severityClassificationAttempted: true,
+        // AI assessment runs at submission and is saved for admin review.
       );
 
       if (!mounted) return;
@@ -582,8 +836,9 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
               id: result['reportId'] as String,
               category: category,
               subcategory: title,
-              description: _descriptionController.text.trim(),
-              location: _locationController.text.trim(),
+              description: result['storedDescription'] as String? ??
+                  _descriptionController.text.trim(),
+              location: submittedLocation,
               status: 'received',
               createdAt: now,
               updatedAt: now,
@@ -592,8 +847,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       if (!mounted) return;
       _showSuccessDialog(
         reportId: result['reportId'] as String,
-        assignedTo: result['assignedTo'] as String,
-        estimatedResolution: result['estimatedResolution'] as String,
+        category: category,
       );
     } catch (e) {
       if (!mounted) return;
@@ -626,11 +880,54 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     return 'Something went wrong. Please try again.';
   }
 
+  Future<Map<String, String>?> _findEmergencyContact(String category) async {
+    final wantedType = category == 'Fire'
+        ? 'fire'
+        : category == 'Medical Emergency'
+            ? 'medical'
+            : null;
+    if (wantedType == null) return null;
+
+    try {
+      final rows = await _hotlineService.fetchHotlines();
+      for (final row in rows) {
+        final type = row['type']?.toString().trim().toLowerCase();
+        if (type != wantedType) continue;
+        final number = (row['number'] ?? row['phone'])?.toString().trim();
+        if (number == null || number.isEmpty) continue;
+        final name = row['name']?.toString().trim();
+        return {
+          'name': name == null || name.isEmpty
+              ? (wantedType == 'fire' ? 'BFP' : 'Ambulance')
+              : name,
+          'number': number,
+        };
+      }
+    } catch (e) {
+      debugPrint('Could not load emergency contact: $e');
+    }
+    return null;
+  }
+
+  Future<void> _callEmergencyNumber(String number) async {
+    final dialable = number.replaceAll(RegExp(r'[^0-9+]'), '');
+    final uri = Uri(scheme: 'tel', path: dialable);
+    if (dialable.isNotEmpty && await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+      return;
+    }
+    if (mounted) _showSnack('Could not open the phone dialer for $number.');
+  }
+
   void _showSuccessDialog({
     required String reportId,
-    required String assignedTo,
-    required String estimatedResolution,
+    required String category,
   }) {
+    final showEmergencyActions =
+        category == 'Fire' || category == 'Medical Emergency';
+    final localContact = showEmergencyActions
+        ? _findEmergencyContact(category)
+        : Future<Map<String, String>?>.value(null);
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -641,112 +938,191 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
             color: _cardBg,
             borderRadius: BorderRadius.circular(28.r),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 72.w,
-                height: 72.w,
-                decoration: BoxDecoration(
-                  color: _isDark
-                      ? const Color(0xFF1B3A2A)
-                      : const Color(0xFFE8F5E9),
-                  borderRadius: BorderRadius.circular(20.r),
-                ),
-                child: Icon(Icons.check_circle_rounded,
-                    size: 40,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72.w,
+                  height: 72.w,
+                  decoration: BoxDecoration(
                     color: _isDark
-                        ? const Color(0xFF66BB6A)
-                        : const Color(0xFF2E7D32)),
-              ),
-              SizedBox(height: 20.h),
-              Text(
-                'Report Submitted!',
-                style: GoogleFonts.poppins(
-                    fontSize: 22.sp,
-                    fontWeight: FontWeight.w700,
-                    color: _titleText),
-              ),
-              SizedBox(height: 8.h),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                decoration: BoxDecoration(
-                  color: _scaffoldBg,
-                  borderRadius: BorderRadius.circular(12.r),
+                        ? const Color(0xFF1B3A2A)
+                        : const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(20.r),
+                  ),
+                  child: Icon(Icons.check_circle_rounded,
+                      size: 40,
+                      color: _isDark
+                          ? const Color(0xFF66BB6A)
+                          : const Color(0xFF2E7D32)),
                 ),
-                child: Text(
-                  reportId,
+                SizedBox(height: 20.h),
+                Text(
+                  'Report Submitted!',
                   style: GoogleFonts.poppins(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w700,
-                    color: ReportColors.heritagePurple,
-                    letterSpacing: 0.5,
-                  ),
+                      fontSize: 22.sp,
+                      fontWeight: FontWeight.w700,
+                      color: _titleText),
                 ),
-              ),
-              SizedBox(height: 16.h),
-              Text(
-                'Thank you, kababayan! Your concern has been forwarded to $assignedTo. Estimated resolution: $estimatedResolution.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                    fontSize: 14.sp, color: _mutedText, height: 1.6),
-              ),
-              SizedBox(height: 24.h),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MainApp()),
-                      (route) => false,
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: ReportColors.heritagePurple,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 16.h),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14.r)),
-                    elevation: 0,
+                SizedBox(height: 8.h),
+                Container(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                  decoration: BoxDecoration(
+                    color: _scaffoldBg,
+                    borderRadius: BorderRadius.circular(12.r),
                   ),
                   child: Text(
-                    'OK, understood',
-                    style: GoogleFonts.inter(
-                        fontSize: 15.sp, fontWeight: FontWeight.w600),
+                    reportId,
+                    style: GoogleFonts.poppins(
+                      fontSize: 15.sp,
+                      fontWeight: FontWeight.w700,
+                      color: ReportColors.heritagePurple,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(height: 10.h),
-              // Shortcut straight to the realtime history so the resident can
-              // start watching the report move Received → Ongoing → Solved.
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const ReportHistoryScreen()),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: ReportColors.heritagePurple,
-                    side: BorderSide(color: ReportColors.heritagePurple),
-                    padding: EdgeInsets.symmetric(vertical: 15.h),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14.r)),
+                SizedBox(height: 16.h),
+                Text(
+                  'Thank you, kababayan! Your report is awaiting LGU verification and office assignment. You will receive a notification when its status changes.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                      fontSize: 14.sp, color: _mutedText, height: 1.6),
+                ),
+                if (showEmergencyActions) ...[
+                  SizedBox(height: 16.h),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(14.w),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14.r),
+                      border:
+                          Border.all(color: Colors.red.withValues(alpha: 0.25)),
+                    ),
+                    child: Text(
+                      'Immediate danger? This report was saved, but responders have not been contacted. Call now for dispatch.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w600,
+                        color: _bodyText,
+                        height: 1.4,
+                      ),
+                    ),
                   ),
-                  child: Text(
-                    'Track this report',
-                    style: GoogleFonts.inter(
-                        fontSize: 15.sp, fontWeight: FontWeight.w600),
+                  SizedBox(height: 10.h),
+                  FutureBuilder<Map<String, String>?>(
+                    future: localContact,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const LinearProgressIndicator();
+                      }
+                      final contact = snapshot.data;
+                      if (contact == null) {
+                        return Text(
+                          'No verified local ${category == 'Fire' ? 'BFP' : 'ambulance'} number is configured yet. Use Unified 911 below.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                              fontSize: 12.sp, color: _mutedText),
+                        );
+                      }
+                      return SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () =>
+                              _callEmergencyNumber(contact['number']!),
+                          icon: const Icon(Icons.phone_in_talk_rounded),
+                          label: Text(
+                            'Call ${contact['name']} · ${contact['number']}',
+                            textAlign: TextAlign.center,
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(vertical: 13.h),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14.r)),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  SizedBox(height: 8.h),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _callEmergencyNumber('911'),
+                      icon: const Icon(Icons.emergency_rounded),
+                      label: const Text('Call Unified 911'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        padding: EdgeInsets.symmetric(vertical: 13.h),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14.r)),
+                      ),
+                    ),
+                  ),
+                ],
+                SizedBox(height: 24.h),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const MainApp()),
+                        (route) => false,
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: ReportColors.heritagePurple,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 16.h),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14.r)),
+                      elevation: 0,
+                    ),
+                    child: Text(
+                      'OK, understood',
+                      style: GoogleFonts.inter(
+                          fontSize: 15.sp, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
-              ),
-            ],
+                SizedBox(height: 10.h),
+                // Shortcut straight to the realtime history so the resident can
+                // start watching the report move Received → Ongoing → Solved.
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ReportHistoryScreen()),
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: ReportColors.heritagePurple,
+                      side: BorderSide(color: ReportColors.heritagePurple),
+                      padding: EdgeInsets.symmetric(vertical: 15.h),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14.r)),
+                    ),
+                    child: Text(
+                      'Track this report',
+                      style: GoogleFonts.inter(
+                          fontSize: 15.sp, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ).animate().scale(duration: 300.ms, curve: Curves.easeOutBack),
@@ -780,27 +1156,11 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
               padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 40.h),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  _buildReportTypeToggle(),
+                  _buildPhotoCard(),
                   SizedBox(height: 20.h),
                   _buildCategorySection(),
                   SizedBox(height: 20.h),
                   _buildDetailsCard(),
-                  SizedBox(height: 20.h),
-                  _buildPhotoCard(),
-                  // AI-assisted severity is Emergency-only — Minor Concern
-                  // reports always get Low severity anyway (see api.py's
-                  // classify_report()), so there's nothing for the model
-                  // to add there; the resident picks a level manually.
-                  if (_reportType == 'Emergency') ...[
-                    SizedBox(height: 20.h),
-                    _buildAutoClassifyButton(),
-                    if (_lastSeverityResult != null) ...[
-                      SizedBox(height: 16.h),
-                      _buildMlTriageResultPanel(),
-                    ],
-                  ],
-                  SizedBox(height: 20.h),
-                  //  _buildPrioritySection(),
                   SizedBox(height: 20.h),
                   _buildLocationCard(),
                   SizedBox(height: 24.h),
@@ -905,352 +1265,284 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
     );
   }
 
-  // ─── EMERGENCY / MINOR CONCERN TOGGLE ────────────────
-  // Matches api.py's `report_type` field exactly — 'Minor Concern' makes
-  // the backend force Low severity without even running the model.
-  Widget _buildReportTypeToggle() {
-    Widget segment(String type, String label, IconData icon) {
-      final isSelected = _reportType == type;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => _setReportType(type),
-          child: AnimatedContainer(
-            duration: 200.ms,
-            padding: EdgeInsets.symmetric(vertical: 14.h),
-            decoration: BoxDecoration(
-              color:
-                  isSelected ? ReportColors.heritagePurple : Colors.transparent,
-              borderRadius: BorderRadius.circular(14.r),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon,
-                    size: 16.sp, color: isSelected ? Colors.white : _mutedText),
-                SizedBox(width: 8.w),
-                Text(
-                  label,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                    color: isSelected ? Colors.white : _mutedText,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: EdgeInsets.all(6.w),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(18.r),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Row(
-        children: [
-          segment('Emergency', 'EMERGENCY', Icons.warning_rounded),
-          segment('Minor Concern', 'MINOR CONCERN',
-              Icons.lightbulb_outline_rounded),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
-  }
-
   // ─── CATEGORY SELECTOR ──────────────────────────────
   Widget _buildCategorySection() {
+    final suggestion = _categorySuggestion;
+    final manualCategories = _manualCategoryMode == null
+        ? const <Map<String, dynamic>>[]
+        : _manualCategoryMode == _ManualCategoryMode.emergency
+            ? _emergencyCategories
+            : _minorConcernCategories;
+
     return Container(
       padding: EdgeInsets.all(22.w),
       decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _sectionHeader('Category', Icons.category_rounded),
-              if (_isCheckingPhotoCategory) ...[
-                SizedBox(width: 10.w),
+          _sectionHeader('2. Category', Icons.category_rounded),
+          SizedBox(height: 16.h),
+          if (_isAnalyzingPhotos) ...[
+            Row(
+              children: [
                 SizedBox(
-                  width: 13.sp,
-                  height: 13.sp,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(_mutedText),
+                  width: 18.w,
+                  height: 18.w,
+                  child: const CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Text(
+                    'Analyzing all ${_attachedPhotos.length} attached ${_attachedPhotos.length == 1 ? 'photo' : 'photos'} as one incident...',
+                    style: GoogleFonts.inter(fontSize: 13.sp, color: _bodyText),
                   ),
                 ),
-                SizedBox(width: 6.w),
-                Text('Scanning photo…',
-                    style:
-                        GoogleFonts.inter(fontSize: 12.sp, color: _mutedText)),
               ],
-            ],
-          ),
-          SizedBox(height: 16.h),
-          Wrap(
-            spacing: 10.w,
-            runSpacing: 10.h,
-            children: _categories.map((cat) {
-              final isSelected = _selectedCategory == cat['name'];
-              final isAiSuggested =
-                  !_categoryManuallySet && _aiSuggestedCategory == cat['name'];
-              return GestureDetector(
-                onTap: () => setState(() {
-                  _selectedCategory = cat['name'];
-                  _categoryManuallySet = true;
-                }),
-                child: AnimatedContainer(
-                  duration: 200.ms,
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? (cat['color'] as Color).withValues(alpha: 0.1)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(14.r),
-                    border: Border.all(
-                      color:
-                          isSelected ? (cat['color'] as Color) : _borderColor,
-                      width: isSelected ? 1.5 : 1,
+            ),
+          ] else if (suggestion?.suggestedCategory != null) ...[
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(14.w),
+              decoration: BoxDecoration(
+                color: ReportColors.heritagePurple.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+              child: Text(
+                _suggestionMessage(suggestion!),
+                style: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w600,
+                  color: _bodyText,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ] else if (_attachedPhotos.isNotEmpty) ...[
+            Text(
+              suggestion?.contextDecision == 'likely_non_emergency'
+                  ? '${suggestion?.contextSummary ?? 'The photos may show a harmless look-alike rather than an active emergency.'} Add a wider photo if danger is present, or use manual reporting.'
+                  : suggestion?.contextDecision == 'needs_more_evidence'
+                      ? '${suggestion?.contextSummary ?? 'The photos do not show enough evidence yet.'} Add another clear view of the same incident.'
+                      : suggestion?.contextDecision == 'possible_emergency'
+                          ? 'Possible ${suggestion?.contextSuggestedCategory ?? 'emergency'}, but it cannot be confirmed automatically. ${suggestion?.contextSummary ?? 'Add another clear photo or select the category manually.'}'
+                          : suggestion?.aiUnavailable == true
+                              ? 'Some photos could not be checked. Try again, add another photo, or use a manual fallback below.'
+                              : suggestion?.hasConflictingResults == true
+                                  ? 'The photos suggest different emergencies. Add a clearer photo; the app will not guess between them.'
+                                  : suggestion?.allPhotosRejectedForAutomaticCategory ==
+                                          true
+                                      ? 'Invalid or unclear emergency photo. No category was selected, and the raw classifier guess was ignored. Add a clear incident photo or choose a manual report below.'
+                                      : 'The emergency is not clear enough yet. Add another view of the same incident to strengthen the result.',
+              style: GoogleFonts.inter(
+                  fontSize: 13.sp, color: _mutedText, height: 1.4),
+            ),
+            if (_attachedPhotos.length < CitizenReportService.maxAnalyzedPhotos)
+              Padding(
+                padding: EdgeInsets.only(top: 8.h),
+                child: Text(
+                  'You can add ${CitizenReportService.maxAnalyzedPhotos - _attachedPhotos.length} more ${CitizenReportService.maxAnalyzedPhotos - _attachedPhotos.length == 1 ? 'photo' : 'photos'}. Matching evidence is combined automatically.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12.sp,
+                    color: ReportColors.heritagePurple,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            SizedBox(height: 14.h),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    _enableManualCategoryMode(_ManualCategoryMode.emergency),
+                icon: const Icon(Icons.warning_amber_rounded),
+                label: const Text('Report emergency manually'),
+              ),
+            ),
+            SizedBox(height: 8.h),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    _enableManualCategoryMode(_ManualCategoryMode.community),
+                icon: const Icon(Icons.location_city_rounded),
+                label: const Text('Report a community concern'),
+              ),
+            ),
+          ] else ...[
+            Text(
+              'Add a photo first. The app will suggest a supported emergency category before offering a manual fallback.',
+              style: GoogleFonts.inter(fontSize: 13.sp, color: _mutedText),
+            ),
+          ],
+          if (manualCategories.isNotEmpty && !_isAnalyzingPhotos) ...[
+            SizedBox(height: 14.h),
+            Text(
+              _manualCategoryMode == _ManualCategoryMode.emergency
+                  ? suggestion?.contextDecision == 'likely_non_emergency'
+                      ? 'The photos may show a non-emergency look-alike. If danger is actually present, select what you witnessed; admin verification will be required.'
+                      : 'AI could not confirm it. Select the emergency you witnessed; admin verification will be required.'
+                  : 'Community concerns are selected manually because the emergency model is not trained for them.',
+              style: GoogleFonts.inter(
+                  fontSize: 12.sp, color: _mutedText, height: 1.4),
+            ),
+            SizedBox(height: 10.h),
+            Wrap(
+              spacing: 10.w,
+              runSpacing: 10.h,
+              children: manualCategories.map((cat) {
+                final category = cat['name'] as String;
+                final categoryLabel = cat['label'] as String? ?? category;
+                final isSelected = _selectedCategory == category;
+                return GestureDetector(
+                  onTap: () => _selectCategory(category),
+                  child: AnimatedContainer(
+                    duration: 200.ms,
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? (cat['color'] as Color).withValues(alpha: 0.1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(14.r),
+                      border: Border.all(
+                        color:
+                            isSelected ? (cat['color'] as Color) : _borderColor,
+                        width: isSelected ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          cat['icon'] as IconData,
+                          size: 18.sp,
+                          color:
+                              isSelected ? (cat['color'] as Color) : _mutedText,
+                        ),
+                        SizedBox(width: 6.w),
+                        Text(
+                          categoryLabel,
+                          style: GoogleFonts.inter(
+                            fontSize: 13.sp,
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.w500,
+                            color: isSelected
+                                ? (cat['color'] as Color)
+                                : _bodyText,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(cat['icon'] as IconData,
-                          size: 18.sp,
-                          color: isSelected
-                              ? (cat['color'] as Color)
-                              : _mutedText),
-                      SizedBox(width: 6.w),
-                      Text(
-                        cat['name'],
-                        style: GoogleFonts.inter(
-                          fontSize: 13.sp,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color:
-                              isSelected ? (cat['color'] as Color) : _bodyText,
-                        ),
-                      ),
-                      if (isAiSuggested) ...[
-                        SizedBox(width: 6.w),
-                        Icon(Icons.auto_awesome_rounded,
-                            size: 13.sp, color: cat['color'] as Color),
-                      ],
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          if (_aiSuggestedCategory != null && !_categoryManuallySet) ...[
-            SizedBox(height: 10.h),
-            Text(
-              'Detected from your photo — tap a different category to change it.',
-              style: GoogleFonts.inter(fontSize: 11.sp, color: _mutedText),
+                );
+              }).toList(),
             ),
-          ] else if (_selectedCategory == null) ...[
-            SizedBox(height: 10.h),
-            Text(
-              'Select a category, or attach a photo and we\'ll detect it for you.',
-              style: GoogleFonts.inter(fontSize: 11.sp, color: _mutedText),
+          ],
+          if (_selectedCategory == 'Medical Emergency' &&
+              _accidentTriageDecision != null) ...[
+            SizedBox(height: 14.h),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(12.w),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(
+                  color: Colors.orange.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.health_and_safety_rounded,
+                      color: Colors.orange),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Accident safety check',
+                          style: GoogleFonts.inter(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w700,
+                            color: _bodyText,
+                          ),
+                        ),
+                        SizedBox(height: 3.h),
+                        Text(
+                          _accidentTriageDecision!.summary,
+                          style: GoogleFonts.inter(
+                            fontSize: 12.sp,
+                            color: _mutedText,
+                            height: 1.35,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              _confirmMedicalEmergency(force: true),
+                          child: const Text('Change answer'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_selectedCategory == 'Fire' && _fireTriageDecision != null) ...[
+            SizedBox(height: 14.h),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(12.w),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(
+                  color: Colors.orange.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.local_fire_department_rounded,
+                      color: Colors.orange),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Fire safety check',
+                          style: GoogleFonts.inter(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w700,
+                            color: _bodyText,
+                          ),
+                        ),
+                        SizedBox(height: 3.h),
+                        Text(
+                          _fireTriageDecision!.summary,
+                          style: GoogleFonts.inter(
+                            fontSize: 12.sp,
+                            color: _mutedText,
+                            height: 1.35,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _confirmFireUrgency,
+                          child: const Text('Change answer'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
       ),
     ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.04, end: 0);
-  }
-
-  // ─── AI: AUTO-CLASSIFY SEVERITY BUTTON ───────────────
-  Widget _buildAutoClassifyButton() {
-    return GestureDetector(
-      onTap: _isCheckingSeverity
-          ? null
-          : () => _classifySeverityFromDescription(manual: true),
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.symmetric(vertical: 16.h),
-        decoration: BoxDecoration(
-          color: ReportColors.heritagePurple.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(16.r),
-          border: Border.all(
-              color: ReportColors.heritagePurple.withValues(alpha: 0.25)),
-        ),
-        child: Center(
-          child: _isCheckingSeverity
-              ? SizedBox(
-                  width: 20.w,
-                  height: 20.w,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                        ReportColors.heritagePurple),
-                  ),
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.auto_awesome_rounded,
-                        size: 18.sp, color: ReportColors.heritagePurple),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'AUTO-CLASSIFY SEVERITY',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
-                        color: ReportColors.heritagePurple,
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-      ),
-    );
-  }
-
-  // ─── AI: ML TRIAGE RESULT PANEL ───────────────────────
-  // Shown after _classifySeverityFromDescription() returns a result —
-  // severity + confidence, a per-level score breakdown, and the detected
-  // language, straight from api.py's /classify response.
-  Widget _buildMlTriageResultPanel() {
-    final result = _lastSeverityResult!;
-    final severityColor = switch (result.severity) {
-      'High' => ReportColors.priorityHigh,
-      'Medium' => ReportColors.priorityMedium,
-      _ => ReportColors.priorityLow,
-    };
-
-    const languageLabels = {
-      'tagalog': 'TAGALOG',
-      'bikol': 'BIKOL',
-      'taglish': 'TAGLISH',
-      'bikol-english': 'BIKOL-ENGLISH',
-      'english': 'ENGLISH',
-    };
-    final languageLabel =
-        languageLabels[result.languageHint?.toLowerCase()] ?? 'ENGLISH';
-
-    // Fixed display order regardless of what order the backend's map
-    // happens to iterate in.
-    const levelOrder = ['High', 'Low', 'Medium'];
-
-    return Container(
-      padding: EdgeInsets.all(18.w),
-      decoration: BoxDecoration(
-        color: severityColor.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(18.r),
-        border: Border.all(color: severityColor.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome_rounded,
-                      size: 15.sp, color: severityColor),
-                  SizedBox(width: 6.w),
-                  Text(
-                    'ML TRIAGE RESULT',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                      color: severityColor,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                decoration: BoxDecoration(
-                  border:
-                      Border.all(color: severityColor.withValues(alpha: 0.4)),
-                  borderRadius: BorderRadius.circular(6.r),
-                ),
-                child: Text(
-                  languageLabel,
-                  style: GoogleFonts.inter(
-                      fontSize: 9.sp,
-                      fontWeight: FontWeight.w700,
-                      color: severityColor),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 10.h),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                result.severity.toUpperCase(),
-                style: GoogleFonts.poppins(
-                  fontSize: 24.sp,
-                  fontWeight: FontWeight.w800,
-                  color: severityColor,
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Text(
-                '${result.confidence.toStringAsFixed(1)}% CONFIDENCE',
-                style: GoogleFonts.inter(fontSize: 11.sp, color: _mutedText),
-              ),
-            ],
-          ),
-          if (result.scores.isNotEmpty) ...[
-            SizedBox(height: 12.h),
-            ...levelOrder.where(result.scores.containsKey).map((level) {
-              final pct = result.scores[level] ?? 0;
-              final color = switch (level) {
-                'High' => ReportColors.priorityHigh,
-                'Medium' => ReportColors.priorityMedium,
-                _ => ReportColors.priorityLow,
-              };
-              return Padding(
-                padding: EdgeInsets.only(bottom: 6.h),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 52.w,
-                      child: Text(level.toUpperCase(),
-                          style: GoogleFonts.inter(
-                              fontSize: 10.sp, color: _mutedText)),
-                    ),
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(6.r),
-                        child: LinearProgressIndicator(
-                          value: (pct / 100).clamp(0, 1).toDouble(),
-                          minHeight: 6.h,
-                          backgroundColor: color.withValues(alpha: 0.12),
-                          valueColor: AlwaysStoppedAnimation<Color>(color),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    SizedBox(
-                      width: 36.w,
-                      child: Text('${pct.toStringAsFixed(0)}%',
-                          textAlign: TextAlign.end,
-                          style: GoogleFonts.inter(
-                              fontSize: 10.sp, color: _mutedText)),
-                    ),
-                  ],
-                ),
-              );
-            }),
-          ],
-        ],
-      ),
-    ).animate().fadeIn(duration: 250.ms);
   }
 
   // ─── DETAILS CARD ───────────────────────────────────
@@ -1261,27 +1553,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('Issue Details', Icons.description_rounded),
+          _sectionHeader('3. Message', Icons.description_rounded),
           SizedBox(height: 16.h),
-          // FIX — no title field for Emergency reports: someone reporting
-          // a fire shouldn't have to stop and compose a short title
-          // before they can describe what's happening. Removed from the
-          // widget tree entirely here (not just hidden) so its
-          // validator doesn't run and block submission — this is what
-          // was silently blocking "Submit Report" whenever the title was
-          // left blank. Minor Concern keeps it; a short label still
-          // helps admins scan a queue of routine complaints.
-          if (_reportType != 'Emergency') ...[
-            _buildTextField(
-              controller: _titleController,
-              hint: 'Brief title of the issue',
-              icon: Icons.title_rounded,
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Please enter a title'
-                  : null,
-            ),
-            SizedBox(height: 14.h),
-          ],
           _buildTextField(
             controller: _descriptionController,
             hint:
@@ -1308,14 +1581,14 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('Location', Icons.location_on_rounded),
+          _sectionHeader('4. Location', Icons.location_on_rounded),
           SizedBox(height: 14.h),
           Row(
             children: [
               Expanded(
                 child: _buildTextField(
                   controller: _locationController,
-                  hint: 'Street, Barangay, or Landmark',
+                  hint: 'Street or barangay',
                   icon: Icons.pin_drop_rounded,
                   validator: (v) => (v == null || v.trim().isEmpty)
                       ? 'Please enter a location'
@@ -1350,6 +1623,17 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
               ),
             ],
           ),
+          SizedBox(height: 12.h),
+          _buildTextField(
+            controller: _landmarkController,
+            hint: 'Nearest landmark (example: school or chapel)',
+            icon: Icons.account_balance_rounded,
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            'Optional, but this helps the barangay team find the place faster.',
+            style: GoogleFonts.inter(fontSize: 12.sp, color: _mutedText),
+          ),
         ],
       ),
     )
@@ -1360,6 +1644,8 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
 
   // ─── PHOTO CARD ─────────────────────────────────────
   Widget _buildPhotoCard() {
+    final canAddMore =
+        _attachedPhotos.length < CitizenReportService.maxAnalyzedPhotos;
     return Container(
       padding: EdgeInsets.all(22.w),
       decoration: _cardDecoration(),
@@ -1369,7 +1655,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _sectionHeader('Photo Evidence', Icons.camera_alt_rounded),
+              _sectionHeader('1. Add Photo', Icons.camera_alt_rounded),
               if (_attachedPhotos.isNotEmpty)
                 Container(
                   padding:
@@ -1390,7 +1676,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
           ),
           SizedBox(height: 4.h),
           Text(
-            'Photos help us understand the issue better (optional)',
+            'Start here. Add up to 3 clear photos so the app can suggest a category.',
             style: GoogleFonts.inter(fontSize: 12.sp, color: _mutedText),
           ),
           SizedBox(height: 16.h),
@@ -1400,7 +1686,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
-                itemCount: _attachedPhotos.length + 1,
+                itemCount: _attachedPhotos.length + (canAddMore ? 1 : 0),
                 separatorBuilder: (_, __) => SizedBox(width: 10.w),
                 itemBuilder: (context, index) {
                   if (index == _attachedPhotos.length) return _addPhotoThumb();
@@ -1410,42 +1696,6 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
             )
           else
             _emptyPhotoArea(),
-          // FIX — verifyImage() already told the app whether this photo
-          // looks like a real disaster photo at all, but nothing ever
-          // showed that to the resident — a random/irrelevant photo was
-          // silently accepted with no feedback. Only api.py's own
-          // category-detection was ever surfaced (via the category
-          // chip auto-select above), never the validity check.
-          if (_lastImageResult != null &&
-              _lastImageResult!.requiresManualReview) ...[
-            SizedBox(height: 14.h),
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-              decoration: BoxDecoration(
-                color: ReportColors.priorityMedium.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(14.r),
-                border: Border.all(
-                    color: ReportColors.priorityMedium.withValues(alpha: 0.35)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.warning_amber_rounded,
-                      color: ReportColors.priorityMedium, size: 20.sp),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: Text(
-                      _lastImageResult!.verdict ??
-                          "This photo doesn't look like a disaster-related photo. You can still submit, but it may need manual review.",
-                      style: GoogleFonts.inter(
-                          fontSize: 12.sp, color: _titleText, height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     )
@@ -1550,6 +1800,11 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
   }
 
   void _showPhotoSourcePicker() {
+    if (_isSubmitting) return;
+    if (_attachedPhotos.length >= CitizenReportService.maxAnalyzedPhotos) {
+      _showSnack('You can attach up to 3 photos.');
+      return;
+    }
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1650,9 +1905,9 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
         borderRadius: BorderRadius.circular(18.r),
         child: InkWell(
           borderRadius: BorderRadius.circular(18.r),
-          onTap: _isSubmitting ? null : _submitReport,
+          onTap: (_isSubmitting || _isAnalyzingPhotos) ? null : _submitReport,
           child: Center(
-            child: _isSubmitting
+            child: (_isSubmitting || _isAnalyzingPhotos)
                 ? SizedBox(
                     width: 24.w,
                     height: 24.w,
@@ -1709,7 +1964,7 @@ class _CitizenReportScreenState extends ConsumerState<CitizenReportScreen> {
           SizedBox(width: 12.w),
           Expanded(
             child: Text(
-              'Your report will be reviewed within 24–48 hours. For emergencies, please call the Milaor hotline directly.',
+              'Your report goes to LGU admin review. Submitting here does not automatically dispatch emergency responders. If danger is immediate, use an official local emergency contact channel.',
               style: GoogleFonts.inter(
                 fontSize: 13.sp,
                 color: _mutedText,
